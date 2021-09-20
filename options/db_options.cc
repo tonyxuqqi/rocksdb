@@ -87,7 +87,8 @@ ImmutableDBOptions::ImmutableDBOptions(const DBOptions& options)
       atomic_flush(options.atomic_flush),
       avoid_unnecessary_blocking_io(options.avoid_unnecessary_blocking_io),
       persist_stats_to_disk(options.persist_stats_to_disk),
-      log_readahead_size(options.log_readahead_size) {
+      log_readahead_size(options.log_readahead_size),
+      enable_db_mutex_owned_timer(options.enable_db_mutex_owned_timer) {
 }
 
 void ImmutableDBOptions::Dump(Logger* log) const {

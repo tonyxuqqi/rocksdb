@@ -140,6 +140,7 @@ DBOptions BuildDBOptions(const ImmutableDBOptions& immutable_db_options,
   options.avoid_unnecessary_blocking_io =
       immutable_db_options.avoid_unnecessary_blocking_io;
   options.log_readahead_size = immutable_db_options.log_readahead_size;
+  options.enable_db_mutex_owned_timer = immutable_db_options.enable_db_mutex_owned_timer;
   return options;
 }
 
@@ -1674,6 +1675,10 @@ std::unordered_map<std::string, OptionTypeInfo>
         {"log_readahead_size",
          {offsetof(struct DBOptions, log_readahead_size), OptionType::kSizeT,
           OptionVerificationType::kNormal, false, 0}},
+        {"enable_db_mutex_owned_timer",
+         {offsetof(struct DBOptions, enable_db_mutex_owned_timer),
+          OptionType::kBoolean, OptionVerificationType::kNormal, false,
+          offsetof(struct ImmutableDBOptions, enable_db_mutex_owned_timer)}},
 };
 
 std::unordered_map<std::string, BlockBasedTableOptions::IndexType>

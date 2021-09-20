@@ -48,6 +48,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/memtablerep.h"
+#include "rocksdb/statistics.h"
 #include "rocksdb/status.h"
 #include "rocksdb/trace_reader_writer.h"
 #include "rocksdb/transaction_log.h"
@@ -1375,7 +1376,7 @@ class DBImpl : public DB {
       // which may lock mutex. Unlocking mutex here to avoid deadlock.
       mutex_.Unlock();
       write_thread_.WaitForMemTableWriters();
-      mutex_.Lock();
+      mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
     }
 
     if (!immutable_db_options_.unordered_write) {

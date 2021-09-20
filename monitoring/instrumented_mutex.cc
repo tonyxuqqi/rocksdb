@@ -6,6 +6,7 @@
 #include "monitoring/instrumented_mutex.h"
 #include "monitoring/perf_context_imp.h"
 #include "monitoring/thread_status_util.h"
+#include "rocksdb/statistics.h"
 #include "test_util/sync_point.h"
 
 namespace rocksdb {
@@ -20,18 +21,23 @@ Statistics* stats_for_report(Env* env, Statistics* stats) {
 }
 }  // namespace
 
-void InstrumentedMutex::Lock() {
+void InstrumentedMutex::Lock(uint32_t tick_type) {
   PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(
       db_mutex_lock_nanos, stats_code_ == DB_MUTEX_WAIT_MICROS,
       stats_for_report(env_, stats_), stats_code_);
-  LockInternal();
+  LockInternal(tick_type);
 }
 
-void InstrumentedMutex::LockInternal() {
+void InstrumentedMutex::LockInternal(uint32_t tick_type) {
 #ifndef NDEBUG
   ThreadStatusUtil::TEST_StateDelay(ThreadStatus::STATE_MUTEX_WAIT);
 #endif
+  
   mutex_.Lock();
+  tick_type_ = tick_type;
+  if (enable_owned_time_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
+     time_recorder_.Start(tick_type);
+  }
 }
 
 void InstrumentedCondVar::Wait() {

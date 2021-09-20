@@ -15,6 +15,7 @@
 #include "db/memtable_list.h"
 #include "file/file_util.h"
 #include "file/sst_file_manager_impl.h"
+#include "rocksdb/statistics.h"
 #include "util/autovector.h"
 
 namespace rocksdb {
@@ -480,7 +481,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
 
     Status file_deletion_status;
     if (schedule_only) {
-      InstrumentedMutexLock guard_lock(&mutex_);
+      InstrumentedMutexLock guard_lock(&mutex_, DB_MUTEX_OWN_MICROS_BY_COMPACTION);
       SchedulePendingPurge(fname, dir_to_sync, type, number, state.job_id);
     } else {
       DeleteObsoleteFileImpl(state.job_id, fname, dir_to_sync, type, number);
@@ -490,7 +491,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
   {
     // After purging obsolete files, remove them from files_grabbed_for_purge_.
     // Use a temporary vector to perform bulk deletion via swap.
-    InstrumentedMutexLock guard_lock(&mutex_);
+    InstrumentedMutexLock guard_lock(&mutex_, DB_MUTEX_OWN_MICROS_BY_COMPACTION);
     autovector<uint64_t> to_be_removed;
     for (auto fn : files_grabbed_for_purge_) {
       if (files_to_del.count(fn) != 0) {
@@ -540,7 +541,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
   wal_manager_.PurgeObsoleteWALFiles();
 #endif  // ROCKSDB_LITE
   LogFlush(immutable_db_options_.info_log);
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_COMPACTION);
   --pending_purge_obsolete_files_;
   assert(pending_purge_obsolete_files_ >= 0);
   if (pending_purge_obsolete_files_ == 0) {
@@ -559,7 +560,7 @@ void DBImpl::DeleteObsoleteFiles() {
     PurgeObsoleteFiles(job_context);
   }
   job_context.Clean();
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_COMPACTION);
 }
 
 uint64_t FindMinPrepLogReferencedByMemTable(

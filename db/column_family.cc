@@ -30,6 +30,7 @@
 #include "memtable/hash_skiplist_rep.h"
 #include "monitoring/thread_status_util.h"
 #include "options/options_helper.h"
+#include "rocksdb/statistics.h"
 #include "table/block_based/block_based_table_factory.h"
 #include "table/merging_iterator.h"
 #include "util/autovector.h"
@@ -92,7 +93,7 @@ const std::string& ColumnFamilyHandleImpl::GetName() const {
 Status ColumnFamilyHandleImpl::GetDescriptor(ColumnFamilyDescriptor* desc) {
 #ifndef ROCKSDB_LITE
   // accessing mutable cf-options requires db mutex.
-  InstrumentedMutexLock l(mutex_);
+  InstrumentedMutexLock l(mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
   *desc = ColumnFamilyDescriptor(cfd()->GetName(), cfd()->GetLatestCFOptions());
   return Status::OK();
 #else

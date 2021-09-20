@@ -19,6 +19,7 @@
 #include "db/event_helpers.h"
 #include "monitoring/perf_context_imp.h"
 #include "options/options_helper.h"
+#include "rocksdb/statistics.h"
 #include "test_util/sync_point.h"
 
 namespace rocksdb {
@@ -977,7 +978,7 @@ void DBImpl::WriteStatusCheck(const Status& status) {
   // compaction and fail any further writes.
   if (immutable_db_options_.paranoid_checks && !status.ok() &&
       !status.IsBusy() && !status.IsIncomplete()) {
-    mutex_.Lock();
+    mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
     error_handler_.SetBGError(status, BackgroundErrorReason::kWriteCallback);
     mutex_.Unlock();
   }
@@ -990,7 +991,7 @@ void DBImpl::MemTableInsertStatusCheck(const Status& status) {
   // client specified an invalid column family and didn't specify
   // ignore_missing_column_families.
   if (!status.ok()) {
-    mutex_.Lock();
+    mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
     assert(!error_handler_.IsBGWorkStopped());
     error_handler_.SetBGError(status, BackgroundErrorReason::kMemTable);
     mutex_.Unlock();
@@ -1319,7 +1320,7 @@ Status DBImpl::WriteRecoverableState() {
         mutex_.Unlock();
         status = recoverable_state_pre_release_callback_->Callback(
             sub_batch_seq, !DISABLE_MEMTABLE, no_log_num, 0, 1);
-        mutex_.Lock();
+        mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_FLUSH_MEMTABLE);
       }
     }
     if (status.ok()) {
@@ -1569,7 +1570,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes,
         // Sleep for 0.001 seconds
         env_->SleepForMicroseconds(kDelayInterval);
       }
-      mutex_.Lock();
+      mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
       write_thread_.EndWriteStall();
     }
 
@@ -1811,7 +1812,7 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
                  "[%s] New memtable created with log file: #%" PRIu64
                  ". Immutable memtables: %d.\n",
                  cfd->GetName().c_str(), new_log_number, num_imm_unflushed);
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_FLUSH_MEMTABLE);
   if (s.ok() && creating_new_log) {
     InstrumentedMutexLock l(&log_write_mutex_);
     assert(new_log != nullptr);
@@ -1883,7 +1884,7 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   // Notify client that memtable is sealed, now that we have successfully
   // installed a new memtable
   NotifyOnMemTableSealed(cfd, memtable_info);
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_FLUSH_MEMTABLE);
 #endif  // ROCKSDB_LITE
   return s;
 }

@@ -1399,7 +1399,7 @@ Status CompactionJob::FinishCompactionOutputFile(
       TEST_SYNC_POINT(
           "CompactionJob::FinishCompactionOutputFile:"
           "MaxAllowedSpaceReached");
-      InstrumentedMutexLock l(db_mutex_);
+      InstrumentedMutexLock l(db_mutex_, DB_MUTEX_OWN_MICROS_BY_COMPACTION);
       db_error_handler_->SetBGError(s, BackgroundErrorReason::kCompaction);
     }
   }

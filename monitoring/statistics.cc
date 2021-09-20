@@ -174,6 +174,16 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
      "rocksdb.block.cache.compression.dict.bytes.insert"},
     {BLOCK_CACHE_COMPRESSION_DICT_BYTES_EVICT,
      "rocksdb.block.cache.compression.dict.bytes.evict"},
+     {DB_MUTEX_OWN_MICROS_BY_OTHER,
+     "db.mutex.other.own.micros"},
+    {DB_MUTEX_OWN_MICROS_BY_USER_API,
+     "db.mutex.userapi.own.micros"},
+     {DB_MUTEX_OWN_MICROS_BY_COMPACTION,
+     "db.mutex.compaction.own.micros"},
+     {DB_MUTEX_OWN_MICROS_BY_SST_INJECT,
+     "db.mutex.sstinject.own.micros"},
+     {DB_MUTEX_OWN_MICROS_BY_FLUSH_MEMTABLE,
+     "db.mutex.flushmemtable.own.micros"},
 };
 
 const std::vector<std::pair<Histograms, std::string>> HistogramsNameMap = {

@@ -11,6 +11,7 @@
 #include "rocksdb/statistics.h"
 #include "rocksdb/thread_status.h"
 #include "util/stop_watch.h"
+#include "monitoring/perf_timer.h"
 
 namespace rocksdb {
 class InstrumentedCondVar;
@@ -19,20 +20,29 @@ class InstrumentedCondVar;
 // for collecting stats and instrumentation.
 class InstrumentedMutex {
  public:
-  explicit InstrumentedMutex(bool adaptive = false)
+  explicit InstrumentedMutex(bool adaptive = false, bool enable_owned_time = false)
       : mutex_(adaptive), stats_(nullptr), env_(nullptr),
-        stats_code_(0) {}
+        stats_code_(0),
+        enable_owned_time_(enable_owned_time),
+        tick_type_(DB_MUTEX_OWN_MICROS_BY_OTHER),
+        time_recorder_(stats_) {}
 
   InstrumentedMutex(
       Statistics* stats, Env* env,
-      int stats_code, bool adaptive = false)
+      int stats_code, bool adaptive = false, bool enable_owned_time = false)
       : mutex_(adaptive), stats_(stats), env_(env),
-        stats_code_(stats_code) {}
+        stats_code_(stats_code),
+        enable_owned_time_(enable_owned_time),
+        tick_type_(DB_MUTEX_OWN_MICROS_BY_OTHER),
+        time_recorder_(stats_) {}
 
-  void Lock();
+  void Lock(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
 
   void Unlock() {
     mutex_.Unlock();
+    if (enable_owned_time_) {
+        time_recorder_.Stop();
+    }
   }
 
   void AssertHeld() {
@@ -40,20 +50,23 @@ class InstrumentedMutex {
   }
 
  private:
-  void LockInternal();
+  void LockInternal(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
   friend class InstrumentedCondVar;
   port::Mutex mutex_;
   Statistics* stats_;
   Env* env_;
   int stats_code_;
+  bool enable_owned_time_;
+  uint32_t tick_type_;
+  PerfTimer time_recorder_; // the time between lock and unlock
 };
 
 // A wrapper class for port::Mutex that provides additional layer
 // for collecting stats and instrumentation.
 class InstrumentedMutexLock {
  public:
-  explicit InstrumentedMutexLock(InstrumentedMutex* mutex) : mutex_(mutex) {
-    mutex_->Lock();
+  explicit InstrumentedMutexLock(InstrumentedMutex* mutex, uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER) : mutex_(mutex) {
+    mutex_->Lock(tick_type);
   }
 
   ~InstrumentedMutexLock() {

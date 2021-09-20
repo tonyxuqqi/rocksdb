@@ -338,6 +338,17 @@ enum Tickers : uint32_t {
   BLOCK_CACHE_COMPRESSION_DICT_ADD,
   BLOCK_CACHE_COMPRESSION_DICT_BYTES_INSERT,
   BLOCK_CACHE_COMPRESSION_DICT_BYTES_EVICT,
+
+  // These counters are for measuring the db mutex's owned time in microseconds per scenarios.
+  // Interesting scenarios include USER_API (such as read/write by caller app), COMPACTION, SST_INJECT, FLUSH_MEMTABLE.
+  // All other scenarios are now in OTHER category.
+  // For now, USER_API's measurement is not enabled for performance consideration.
+  DB_MUTEX_OWN_MICROS_BY_OTHER,  
+  DB_MUTEX_OWN_MICROS_BY_USER_API,  
+  DB_MUTEX_OWN_MICROS_BY_COMPACTION,
+  DB_MUTEX_OWN_MICROS_BY_SST_INJECT, 
+  DB_MUTEX_OWN_MICROS_BY_FLUSH_MEMTABLE,
+
   TICKER_ENUM_MAX
 };
 

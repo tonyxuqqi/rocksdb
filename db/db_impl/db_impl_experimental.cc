@@ -15,6 +15,7 @@
 #include "db/column_family.h"
 #include "db/job_context.h"
 #include "db/version_set.h"
+#include "rocksdb/statistics.h"
 #include "rocksdb/status.h"
 
 namespace rocksdb {
@@ -32,7 +33,7 @@ Status DBImpl::SuggestCompactRange(ColumnFamilyHandle* column_family,
     end_key.SetMaxPossibleForUserKey(*end);
   }
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_COMPACTION);
     auto vstorage = cfd->current()->storage_info();
     for (int level = 0; level < vstorage->num_non_empty_levels() - 1; ++level) {
       std::vector<FileMetaData*> inputs;
@@ -66,7 +67,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
   VersionEdit edit;
   JobContext job_context(next_job_id_.fetch_add(1), true);
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_COMPACTION);
     auto* cfd = static_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
     const auto* vstorage = cfd->current()->storage_info();
 

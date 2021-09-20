@@ -153,7 +153,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       mutable_db_options_(initial_db_options_),
       stats_(immutable_db_options_.statistics.get()),
       mutex_(stats_, env_, DB_MUTEX_WAIT_MICROS,
-             immutable_db_options_.use_adaptive_mutex),
+             immutable_db_options_.use_adaptive_mutex, immutable_db_options_.enable_db_mutex_owned_timer),
       default_cf_handle_(nullptr),
       max_total_in_memory_state_(0),
       env_options_(BuildDBOptions(immutable_db_options_, mutable_db_options_)),
@@ -278,7 +278,7 @@ Status DBImpl::Resume() {
 
   mutex_.Unlock();
   Status s = error_handler_.RecoverFromBGError(true);
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
   return s;
 }
 
@@ -404,7 +404,7 @@ void DBImpl::CancelAllBackgroundWork(bool wait) {
     thread_persist_stats_->cancel();
     thread_persist_stats_.reset();
   }
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_FLUSH_MEMTABLE);
   if (!shutting_down_.load(std::memory_order_acquire) &&
       has_unpersisted_data_.load(std::memory_order_relaxed) &&
       !mutable_db_options_.avoid_flush_during_shutdown) {
@@ -1321,7 +1321,7 @@ void DBImpl::SchedulePurge() {
 }
 
 void DBImpl::BackgroundCallPurge() {
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_COMPACTION);
 
   while (!logs_to_free_queue_.empty()) {
     assert(!logs_to_free_queue_.empty());
@@ -1329,7 +1329,7 @@ void DBImpl::BackgroundCallPurge() {
     logs_to_free_queue_.pop_front();
     mutex_.Unlock();
     delete log_writer;
-    mutex_.Lock();
+    mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_COMPACTION);
   }
   for (const auto& file : purge_files_) {
     const PurgeFileInfo& purge_file = file.second;
@@ -1341,7 +1341,7 @@ void DBImpl::BackgroundCallPurge() {
 
     mutex_.Unlock();
     DeleteObsoleteFileImpl(job_id, fname, dir_to_sync, type, number);
-    mutex_.Lock();
+    mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_COMPACTION);
   }
   purge_files_.clear();
 
@@ -1655,7 +1655,7 @@ std::vector<Status> DBImpl::MultiGet(
           TEST_SYNC_POINT("DBImpl::MultiGet::LastTry");
           // We're close to max number of retries. For the last retry,
           // acquire the lock so we're sure to succeed
-          mutex_.Lock();
+          mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
         }
         snapshot = last_seq_same_as_publish_seq_
                        ? versions_->LastSequence()
@@ -2080,7 +2080,7 @@ Status DBImpl::CreateColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
 
   SuperVersionContext sv_context(/* create_superversion */ true);
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
 
     if (versions_->GetColumnFamilySet()->GetColumnFamily(column_family_name) !=
         nullptr) {
@@ -2191,7 +2191,7 @@ Status DBImpl::DropColumnFamilyImpl(ColumnFamilyHandle* column_family) {
 
   Status s;
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     if (cfd->IsDropped()) {
       s = Status::InvalidArgument("Column family already dropped!\n");
     }
@@ -2437,7 +2437,7 @@ SnapshotImpl* DBImpl::GetSnapshotImpl(bool is_write_conflict_boundary,
   SnapshotImpl* s = new SnapshotImpl;
 
   if (lock) {
-    mutex_.Lock();
+    mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
   }
   // returns null if the underlying memtable does not support snapshot.
   if (!is_snapshot_supported_) {
@@ -2473,7 +2473,7 @@ bool CfdListContains(const CfdList& list, ColumnFamilyData* cfd) {
 void DBImpl::ReleaseSnapshot(const Snapshot* s) {
   const SnapshotImpl* casted_s = reinterpret_cast<const SnapshotImpl*>(s);
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     snapshots_.Delete(casted_s);
     uint64_t oldest_snapshot;
     if (snapshots_.empty()) {
@@ -2524,7 +2524,7 @@ Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
   auto cfd = cfh->cfd();
 
   // Increment the ref count
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
   auto version = cfd->current();
   version->Ref();
   mutex_.Unlock();
@@ -2532,7 +2532,7 @@ Status DBImpl::GetPropertiesOfAllTables(ColumnFamilyHandle* column_family,
   auto s = version->GetPropertiesOfAllTables(props);
 
   // Decrement the ref count
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
   version->Unref();
   mutex_.Unlock();
 
@@ -2546,7 +2546,7 @@ Status DBImpl::GetPropertiesOfTablesInRange(ColumnFamilyHandle* column_family,
   auto cfd = cfh->cfd();
 
   // Increment the ref count
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
   auto version = cfd->current();
   version->Ref();
   mutex_.Unlock();
@@ -2554,7 +2554,7 @@ Status DBImpl::GetPropertiesOfTablesInRange(ColumnFamilyHandle* column_family,
   auto s = version->GetPropertiesOfTablesInRange(range, n, props);
 
   // Decrement the ref count
-  mutex_.Lock();
+  mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_USER_API);
   version->Unref();
   mutex_.Unlock();
 
@@ -2568,14 +2568,14 @@ const std::string& DBImpl::GetName() const { return dbname_; }
 Env* DBImpl::GetEnv() const { return env_; }
 
 Options DBImpl::GetOptions(ColumnFamilyHandle* column_family) const {
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   return Options(BuildDBOptions(immutable_db_options_, mutable_db_options_),
                  cfh->cfd()->GetLatestCFOptions());
 }
 
 DBOptions DBImpl::GetDBOptions() const {
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
   return BuildDBOptions(immutable_db_options_, mutable_db_options_);
 }
 
@@ -2595,7 +2595,7 @@ bool DBImpl::GetProperty(ColumnFamilyHandle* column_family,
     }
     return ret_value;
   } else if (property_info->handle_string) {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     return cfd->internal_stats()->GetStringProperty(*property_info, property,
                                                     value);
   } else if (property_info->handle_string_dbimpl) {
@@ -2621,7 +2621,7 @@ bool DBImpl::GetMapProperty(ColumnFamilyHandle* column_family,
   if (property_info == nullptr) {
     return false;
   } else if (property_info->handle_map) {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     return cfd->internal_stats()->GetMapProperty(*property_info, property,
                                                  value);
   }
@@ -2649,7 +2649,7 @@ bool DBImpl::GetIntPropertyInternal(ColumnFamilyData* cfd,
       mutex_.AssertHeld();
       return cfd->internal_stats()->GetIntProperty(property_info, value, this);
     } else {
-      InstrumentedMutexLock l(&mutex_);
+      InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
       return cfd->internal_stats()->GetIntProperty(property_info, value, this);
     }
   } else {
@@ -2683,7 +2683,7 @@ bool DBImpl::GetPropertyHandleOptionsStatistics(std::string* value) {
 
 #ifndef ROCKSDB_LITE
 Status DBImpl::ResetStats() {
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
   for (auto* cfd : *versions_->GetColumnFamilySet()) {
     if (cfd->initialized()) {
       cfd->internal_stats()->Clear();
@@ -2703,7 +2703,7 @@ bool DBImpl::GetAggregatedIntProperty(const Slice& property,
   uint64_t sum = 0;
   {
     // Needs mutex to protect the list of column families.
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     uint64_t value;
     for (auto* cfd : *versions_->GetColumnFamilySet()) {
       if (!cfd->initialized()) {
@@ -2741,7 +2741,7 @@ void DBImpl::CleanupSuperVersion(SuperVersion* sv) {
   // Release SuperVersion
   if (sv->Unref()) {
     {
-      InstrumentedMutexLock l(&mutex_);
+      InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
       sv->Cleanup();
     }
     delete sv;
@@ -2784,7 +2784,7 @@ ColumnFamilyHandle* DBImpl::GetColumnFamilyHandle(uint32_t column_family_id) {
 // REQUIRED: mutex is NOT held.
 std::unique_ptr<ColumnFamilyHandle> DBImpl::GetColumnFamilyHandleUnlocked(
     uint32_t column_family_id) {
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
 
   auto* cfd =
       versions_->GetColumnFamilySet()->GetColumnFamily(column_family_id);
@@ -2913,7 +2913,7 @@ Status DBImpl::DeleteFile(std::string name) {
   VersionEdit edit;
   JobContext job_context(next_job_id_.fetch_add(1), true);
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     status = versions_->GetMetadataForFile(number, &level, &metadata, &cfd);
     if (!status.ok()) {
       ROCKS_LOG_WARN(immutable_db_options_.info_log,
@@ -2987,7 +2987,7 @@ Status DBImpl::DeleteFilesInRanges(ColumnFamilyHandle* column_family,
   std::set<FileMetaData*> deleted_files;
   JobContext job_context(next_job_id_.fetch_add(1), true);
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     Version* input_version = cfd->current();
 
     auto* vstorage = input_version->storage_info();
@@ -3709,7 +3709,7 @@ Status DBImpl::IngestExternalFiles(
       static_cast<ColumnFamilyHandleImpl*>(args[0].column_family)->cfd(), total,
       &pending_output_elem, &next_file_number);
   if (!status.ok()) {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_SST_INJECT);
     ReleaseFileNumberFromPendingOutputs(pending_output_elem);
     return status;
   }
@@ -3760,7 +3760,7 @@ Status DBImpl::IngestExternalFiles(
         ingestion_jobs[i].Cleanup(status);
       }
     }
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_SST_INJECT);
     ReleaseFileNumberFromPendingOutputs(pending_output_elem);
     return status;
   }
@@ -3773,7 +3773,7 @@ Status DBImpl::IngestExternalFiles(
   TEST_SYNC_POINT("DBImpl::IngestExternalFiles:BeforeJobsRun:1");
   TEST_SYNC_POINT("DBImpl::AddFile:Start");
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_SST_INJECT);
     TEST_SYNC_POINT("DBImpl::AddFile:MutexLock");
 
     // Stop writes to the DB by entering both write threads
@@ -3827,7 +3827,7 @@ Status DBImpl::IngestExternalFiles(
         status = AtomicFlushMemTables(cfds_to_flush, flush_opts,
                                       FlushReason::kExternalFileIngestion,
                                       true /* writes_stopped */);
-        mutex_.Lock();
+        mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_SST_INJECT);
       } else {
         for (size_t i = 0; i != num_cfs; ++i) {
           if (need_flush[i]) {
@@ -3838,7 +3838,7 @@ Status DBImpl::IngestExternalFiles(
             status = FlushMemTable(cfd, flush_opts,
                                    FlushReason::kExternalFileIngestion,
                                    true /* writes_stopped */);
-            mutex_.Lock();
+            mutex_.Lock(DB_MUTEX_OWN_MICROS_BY_SST_INJECT);
             if (!status.ok()) {
               break;
             }
@@ -4221,7 +4221,7 @@ Status DBImpl::ReserveFileNumbersBeforeIngestion(
   SuperVersionContext dummy_sv_ctx(true /* create_superversion */);
   assert(nullptr != pending_output_elem);
   assert(nullptr != next_file_number);
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_SST_INJECT);
   if (error_handler_.IsDBStopped()) {
     // Do not ingest files when there is a bg_error
     return error_handler_.GetBGError();

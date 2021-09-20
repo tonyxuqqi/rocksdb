@@ -18,13 +18,14 @@
 #include "port/port.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
+#include "rocksdb/statistics.h"
 #include "test_util/sync_point.h"
 #include "util/mutexlock.h"
 
 namespace rocksdb {
 
 Status DBImpl::DisableFileDeletions() {
-  InstrumentedMutexLock l(&mutex_);
+  InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
   ++disable_delete_obsolete_files_;
   if (disable_delete_obsolete_files_ == 1) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log, "File Deletions Disabled");
@@ -42,7 +43,7 @@ Status DBImpl::EnableFileDeletions(bool force) {
   JobContext job_context(0);
   bool file_deletion_enabled = false;
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     if (force) {
       // if force, we need to enable file deletions right away
       disable_delete_obsolete_files_ = 0;
@@ -154,7 +155,7 @@ Status DBImpl::GetSortedWalFiles(VectorLogPtr& files) {
     // wait for pending purges to finish since WalManager doesn't know which
     // files are going to be purged. Additional purges won't be scheduled as
     // long as deletions are disabled (so the below loop must terminate).
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     while (disable_delete_obsolete_files_ > 0 &&
            pending_purge_obsolete_files_ > 0) {
       bg_cv_.Wait();

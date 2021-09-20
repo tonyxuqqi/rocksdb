@@ -1126,6 +1126,9 @@ struct DBOptions {
   //
   // Default: 0
   size_t log_readahead_size = 0;
+
+  // enable recording owned time 
+  bool enable_db_mutex_owned_timer  = false;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)
