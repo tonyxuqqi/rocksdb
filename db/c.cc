@@ -2721,6 +2721,11 @@ void rocksdb_options_set_ratelimiter(rocksdb_options_t *opt, rocksdb_ratelimiter
   }
 }
 
+void rocksdb_options_set_mutex_owner_timer(rocksdb_options_t* opt,
+                                         unsigned char v) {
+  opt->rep.enable_db_mutex_owned_timer = v;
+}
+
 rocksdb_ratelimiter_t* rocksdb_ratelimiter_create(
     int64_t rate_bytes_per_sec,
     int64_t refill_period_us,
