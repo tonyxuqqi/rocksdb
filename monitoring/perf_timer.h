@@ -4,7 +4,6 @@
 //  (found in the LICENSE.Apache file in the root directory).
 //
 #pragma once
-#include "monitoring/perf_flag_imp.h"
 #include "monitoring/perf_level_imp.h"
 #include "rocksdb/env.h"
 #include "util/stop_watch.h"
