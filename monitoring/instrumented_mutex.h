@@ -39,10 +39,10 @@ class InstrumentedMutex {
   void Lock(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
 
   void Unlock() {
-    mutex_.Unlock();
     if (enable_owned_time_) {
         time_recorder_.Stop();
     }
+    mutex_.Unlock();    
   }
 
   void AssertHeld() {
