@@ -32,15 +32,7 @@ class PerfTimer {
      return env_->NowNanos();
   }
 
-  void Stop() {
-    if (start_) {
-      uint64_t duration = time_now() - start_;
-      if (statistics_ != nullptr) {
-        RecordTick(statistics_, ticker_type_, duration);
-      }
-      start_ = 0;
-    }
-  }
+  void Stop();
 
  private:
   Env* const env_;
