@@ -29,7 +29,7 @@ class PerfTimer {
   }
 
   uint64_t time_now() {
-     return env_->NowCPUNanos();
+     return env_->NowNanos();
   }
 
   void Stop() {
