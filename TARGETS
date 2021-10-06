@@ -199,6 +199,7 @@ cpp_library(
         "monitoring/perf_context.cc",
         "monitoring/perf_level.cc",
         "monitoring/persistent_stats_history.cc",
+        "monitoring/perf_timer.cc", 
         "monitoring/statistics.cc",
         "monitoring/thread_status_impl.cc",
         "monitoring/thread_status_updater.cc",
