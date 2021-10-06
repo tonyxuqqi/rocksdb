@@ -591,6 +591,7 @@ set(SOURCES
         monitoring/thread_status_updater.cc
         monitoring/thread_status_util.cc
         monitoring/thread_status_util_debug.cc
+        monitoring/perf_timer.cc
         options/cf_options.cc
         options/db_options.cc
         options/options.cc
