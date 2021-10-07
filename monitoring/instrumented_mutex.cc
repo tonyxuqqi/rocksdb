@@ -29,8 +29,8 @@ void InstrumentedMutex::Lock(uint32_t ticker_type) {
         stats_for_report(env_, stats_), stats_code_, &locked_start_time);
     LockInternal();
   }
-  if (ticker_type == DB_MUTEX_OWN_MICROS_BY_COMPACTION && locked_start_time == 0) {
-     printf("InstrumentedMutex::Lock ticker_type is compaction. condition %d \n", stats_code_ == DB_MUTEX_WAIT_MICROS);
+  if (ticker_type == DB_MUTEX_OWN_MICROS_BY_COMPACTION ) {
+     printf("InstrumentedMutex::Lock ticker_type is compaction. %lld, condition %d \n", (long long)locked_start_time, stats_code_ == DB_MUTEX_WAIT_MICROS);
   }
   last_start_time_ = locked_start_time;
   ticker_type_ = ticker_type; 
