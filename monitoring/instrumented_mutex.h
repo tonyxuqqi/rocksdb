@@ -39,11 +39,11 @@ class InstrumentedMutex {
   void Lock(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
 
   void Unlock() {
-    uint64_t start_record = time_recorder_.GetStartRecord();
+    uint64_t start_time = time_recorder_.GetStartTime();
     uint32_t ticker_type = ticker_type_;
     mutex_.Unlock();    
     if (GetPerfLevel() >= enable_perf_level_ && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
-        time_recorder_.Stop(start_record, ticker_type);
+        time_recorder_.Stop(start_time, ticker_type);
     }
   }
 
@@ -52,7 +52,7 @@ class InstrumentedMutex {
   }
 
  private:
-  void LockInternal(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
+  void LockInternal();
   friend class InstrumentedCondVar;
   port::Mutex mutex_;
   Statistics* stats_;

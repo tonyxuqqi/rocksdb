@@ -22,32 +22,30 @@ Statistics* stats_for_report(Env* env, Statistics* stats) {
 }  // namespace
 
 void InstrumentedMutex::Lock(uint32_t tick_type) {
-  PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(
-      db_mutex_lock_nanos, stats_code_ == DB_MUTEX_WAIT_MICROS,
-      stats_for_report(env_, stats_), stats_code_);
-  LockInternal(tick_type);
+  uint64_t locked_start_time = 0;
+  {
+    PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(
+        db_mutex_lock_nanos, stats_code_ == DB_MUTEX_WAIT_MICROS,
+        stats_for_report(env_, stats_), stats_code_, &locked_start_time);
+    LockInternal();
+  }
+  if (GetPerfLevel() >= enable_perf_level_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
+      time_recorder_.SetStartTime(locked_start_time);
+      ticker_type_ = tick_type;
+  }
 }
 
-void InstrumentedMutex::LockInternal(uint32_t tick_type) {
+void InstrumentedMutex::LockInternal() {
 #ifndef NDEBUG
   ThreadStatusUtil::TEST_StateDelay(ThreadStatus::STATE_MUTEX_WAIT);
 #endif
-  bool record_start_time = false;
-  if (GetPerfLevel() >= enable_perf_level_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
-     time_recorder_.Start();
-     record_start_time = true; 
-  }
   mutex_.Lock();
-  if (record_start_time) {
-     time_recorder_.RecordStart();
-     ticker_type_ = tick_type;
-  }
 }
 
 void InstrumentedCondVar::Wait() {
   PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(
       db_condition_wait_nanos, stats_code_ == DB_MUTEX_WAIT_MICROS,
-      stats_for_report(env_, stats_), stats_code_);
+      stats_for_report(env_, stats_), stats_code_, nullptr);
   WaitInternal();
 }
 
@@ -61,7 +59,7 @@ void InstrumentedCondVar::WaitInternal() {
 bool InstrumentedCondVar::TimedWait(uint64_t abs_time_us) {
   PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(
       db_condition_wait_nanos, stats_code_ == DB_MUTEX_WAIT_MICROS,
-      stats_for_report(env_, stats_), stats_code_);
+      stats_for_report(env_, stats_), stats_code_, nullptr);
   return TimedWaitInternal(abs_time_us);
 }
 

@@ -24,7 +24,8 @@ class PerfStepTimer {
         start_(0),
         metric_(metric),
         statistics_(statistics),
-        ticker_type_(ticker_type) {}
+        ticker_type_(ticker_type),
+        stop_time_(nullptr) {}
 
   ~PerfStepTimer() {
     Stop();
@@ -32,7 +33,7 @@ class PerfStepTimer {
 
   void Start() {
     if (perf_counter_enabled_ || statistics_ != nullptr) {
-      start_ = time_now();
+        start_ = time_now();
     }
   }
 
@@ -52,9 +53,17 @@ class PerfStepTimer {
     }
   }
 
+  void SetStopTime(uint64_t* stop_time) {
+    stop_time_ = stop_time;
+  }
+  
   void Stop() {
     if (start_) {
-      uint64_t duration = time_now() - start_;
+      uint64_t stop_time = time_now();
+      if (stop_time_) {
+        *stop_time_ = stop_time;
+      }
+      uint64_t duration = stop_time - start_;
       if (perf_counter_enabled_) {
         *metric_ += duration;
       }
@@ -74,6 +83,7 @@ class PerfStepTimer {
   uint64_t* metric_;
   Statistics* statistics_;
   uint32_t ticker_type_;
+  uint64_t* stop_time_;
 };
 
 }  // namespace rocksdb

@@ -14,8 +14,6 @@ class PerfTimer {
   explicit PerfTimer(Statistics* statistics)
       : env_(Env::Default()),
         start_(0),
-        start_record_(0),
-        last_start_record_(0),
         statistics_(statistics) {}
 
   void Start() {
@@ -24,25 +22,23 @@ class PerfTimer {
     }
   }
 
-  void RecordStart() {
-     start_record_ = start_;
+  void SetStartTime(uint64_t start_time) {
+     start_ = start_time;
   }
  
-  uint64_t GetStartRecord() const {
-    return start_record_;
+  uint64_t GetStartTime() const {
+    return start_;
   }
 
   uint64_t time_now() {
      return env_->NowNanos();
   }
 
-  void Stop(uint64_t start_record, uint32_t ticker_type);
+  void Stop(uint64_t start_time, uint32_t ticker_type);
 
  private:
   Env* const env_;
   uint64_t start_;
-  uint64_t start_record_;
-  uint64_t last_start_record_;
   Statistics* statistics_;
 };
 

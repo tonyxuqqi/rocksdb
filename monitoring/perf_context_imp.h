@@ -54,12 +54,13 @@ extern thread_local PerfContext perf_context;
   perf_step_timer_##metric.Start();
 
 #define PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(metric, condition, stats,       \
-                                               ticker_type)                    \
+                                               ticker_type, stop_time)         \
   PerfStepTimer perf_step_timer_##metric(&(perf_context.metric), nullptr,      \
                                          false, PerfLevel::kEnableTime, stats, \
                                          ticker_type);                         \
   if (condition) {                                                             \
     perf_step_timer_##metric.Start();                                          \
+    perf_step_timer_##metric.SetStopTime(stop_time);                           \
   }
 
 // Update metric with time elapsed since last START. start time is reset
