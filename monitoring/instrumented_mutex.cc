@@ -33,7 +33,7 @@ void InstrumentedMutex::LockInternal(uint32_t tick_type) {
   ThreadStatusUtil::TEST_StateDelay(ThreadStatus::STATE_MUTEX_WAIT);
 #endif
   bool record_start_time = false;
-  if (enable_owned_time_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
+  if (GetPerfLevel() >= enable_perf_level_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
      time_recorder_.Start();
      record_start_time = true; 
   }

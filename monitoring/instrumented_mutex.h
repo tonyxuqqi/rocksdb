@@ -12,7 +12,7 @@
 #include "rocksdb/thread_status.h"
 #include "util/stop_watch.h"
 #include "monitoring/perf_timer.h"
-
+#include "rocksdb/perf_level.h"
 namespace rocksdb {
 class InstrumentedCondVar;
 
@@ -20,19 +20,19 @@ class InstrumentedCondVar;
 // for collecting stats and instrumentation.
 class InstrumentedMutex {
  public:
-  explicit InstrumentedMutex(bool adaptive = false, bool enable_owned_time = false)
+  explicit InstrumentedMutex(bool adaptive = false, PerfLevel enable_perf_level = PerfLevel::kEnableTime)
       : mutex_(adaptive), stats_(nullptr), env_(nullptr),
         stats_code_(0),
-        enable_owned_time_(enable_owned_time),
+        enable_perf_level_(enable_perf_level),
         time_recorder_(stats_),
         ticker_type_(0) {}
 
   InstrumentedMutex(
       Statistics* stats, Env* env,
-      int stats_code, bool adaptive = false, bool enable_owned_time = false)
+      int stats_code, bool adaptive = false, PerfLevel enable_perf_level = PerfLevel::kEnableTime)
       : mutex_(adaptive), stats_(stats), env_(env),
         stats_code_(stats_code),
-        enable_owned_time_(enable_owned_time),
+        enable_perf_level_(enable_perf_level),
         time_recorder_(stats_),
         ticker_type_(0) {}
 
@@ -42,7 +42,7 @@ class InstrumentedMutex {
     uint64_t start_record = time_recorder_.GetStartRecord();
     uint32_t ticker_type = ticker_type_;
     mutex_.Unlock();    
-    if (enable_owned_time_ && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
+    if (GetPerfLevel() >= enable_perf_level_ && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
         time_recorder_.Stop(start_record, ticker_type);
     }
   }
@@ -58,7 +58,7 @@ class InstrumentedMutex {
   Statistics* stats_;
   Env* env_;
   int stats_code_;
-  bool enable_owned_time_;
+  PerfLevel enable_perf_level_;
   PerfTimer time_recorder_; // the time between lock and unlock
   uint32_t ticker_type_;
 };
