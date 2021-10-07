@@ -13,22 +13,7 @@ class PerfTimer {
  public:
   explicit PerfTimer(Statistics* statistics)
       : env_(Env::Default()),
-        start_(0),
         statistics_(statistics) {}
-
-  void Start() {
-    if (statistics_ != nullptr) {
-      start_ = time_now();
-    }
-  }
-
-  void SetStartTime(uint64_t start_time) {
-     start_ = start_time;
-  }
- 
-  uint64_t GetStartTime() const {
-    return start_;
-  }
 
   uint64_t time_now() {
      return env_->NowNanos();
@@ -38,7 +23,6 @@ class PerfTimer {
 
  private:
   Env* const env_;
-  uint64_t start_;
   Statistics* statistics_;
 };
 

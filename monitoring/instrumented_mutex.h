@@ -25,7 +25,8 @@ class InstrumentedMutex {
         stats_code_(0),
         enable_perf_level_(enable_perf_level),
         time_recorder_(stats_),
-        ticker_type_(0) {}
+        ticker_type_(0),
+        last_start_time_(0) {}
 
   InstrumentedMutex(
       Statistics* stats, Env* env,
@@ -34,15 +35,16 @@ class InstrumentedMutex {
         stats_code_(stats_code),
         enable_perf_level_(enable_perf_level),
         time_recorder_(stats_),
-        ticker_type_(0) {}
+        ticker_type_(0),
+        last_start_time_(0) {}
 
   void Lock(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
 
   void Unlock() {
-    uint64_t start_time = time_recorder_.GetStartTime();
+    uint64_t start_time = last_start_time_;
     uint32_t ticker_type = ticker_type_;
     mutex_.Unlock();    
-    if (GetPerfLevel() >= enable_perf_level_ && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
+    if (GetPerfLevel() >= enable_perf_level_ && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API && stats_code_ == DB_MUTEX_WAIT_MICROS) {
         time_recorder_.Stop(start_time, ticker_type);
     }
   }
@@ -61,6 +63,7 @@ class InstrumentedMutex {
   PerfLevel enable_perf_level_;
   PerfTimer time_recorder_; // the time between lock and unlock
   uint32_t ticker_type_;
+  uint64_t last_start_time_;
 };
 
 // A wrapper class for port::Mutex that provides additional layer

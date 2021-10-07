@@ -21,7 +21,7 @@ Statistics* stats_for_report(Env* env, Statistics* stats) {
 }
 }  // namespace
 
-void InstrumentedMutex::Lock(uint32_t tick_type) {
+void InstrumentedMutex::Lock(uint32_t ticker_type) {
   uint64_t locked_start_time = 0;
   {
     PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(
@@ -29,10 +29,8 @@ void InstrumentedMutex::Lock(uint32_t tick_type) {
         stats_for_report(env_, stats_), stats_code_, &locked_start_time);
     LockInternal();
   }
-  if (GetPerfLevel() >= enable_perf_level_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
-      time_recorder_.SetStartTime(locked_start_time);
-      ticker_type_ = tick_type;
-  }
+  last_start_time_ = locked_start_time;
+  ticker_type_ = ticker_type; 
 }
 
 void InstrumentedMutex::LockInternal() {
