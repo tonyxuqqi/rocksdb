@@ -44,8 +44,10 @@ class InstrumentedMutex {
     uint64_t start_time = last_start_time_;
     uint32_t ticker_type = ticker_type_;
     mutex_.Unlock();    
-    if (GetPerfLevel() >= enable_perf_level_ && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API && stats_code_ == DB_MUTEX_WAIT_MICROS) {
+    if (start_time && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API && stats_code_ == DB_MUTEX_WAIT_MICROS) {
         time_recorder_.Stop(start_time, ticker_type);
+    } else if (ticker_type == DB_MUTEX_OWN_MICROS_BY_COMPACTION) {
+        printf("ticket_type is compaction. Stats_code %d\n", stats_code_);
     }
   }
 
