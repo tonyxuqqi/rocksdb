@@ -10,9 +10,9 @@
 namespace rocksdb {
 
 #ifdef ROCKSDB_SUPPORT_THREAD_LOCAL
-__thread PerfLevel perf_level = kEnableTime;
+__thread PerfLevel perf_level = kEnableCount;
 #else
-PerfLevel perf_level = kEnableTime;
+PerfLevel perf_level = kEnableCount;
 #endif
 
 void SetPerfLevel(PerfLevel level) {
