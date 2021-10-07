@@ -32,11 +32,14 @@ void InstrumentedMutex::LockInternal(uint32_t tick_type) {
 #ifndef NDEBUG
   ThreadStatusUtil::TEST_StateDelay(ThreadStatus::STATE_MUTEX_WAIT);
 #endif
-  
-  mutex_.Lock();
-  tick_type_ = tick_type;
+  bool record_start_time = false;
   if (enable_owned_time_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
      time_recorder_.Start(tick_type);
+     record_start_time = true; 
+  }
+  mutex_.Lock();
+  if (record_start_time) {
+     time_recorder_.RecordStart();
   }
 }
 

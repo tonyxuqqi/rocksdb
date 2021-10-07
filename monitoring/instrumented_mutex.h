@@ -24,7 +24,6 @@ class InstrumentedMutex {
       : mutex_(adaptive), stats_(nullptr), env_(nullptr),
         stats_code_(0),
         enable_owned_time_(enable_owned_time),
-        tick_type_(DB_MUTEX_OWN_MICROS_BY_OTHER),
         time_recorder_(stats_) {}
 
   InstrumentedMutex(
@@ -33,16 +32,15 @@ class InstrumentedMutex {
       : mutex_(adaptive), stats_(stats), env_(env),
         stats_code_(stats_code),
         enable_owned_time_(enable_owned_time),
-        tick_type_(DB_MUTEX_OWN_MICROS_BY_OTHER),
         time_recorder_(stats_) {}
 
   void Lock(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
 
   void Unlock() {
+    mutex_.Unlock();    
     if (enable_owned_time_) {
         time_recorder_.Stop();
     }
-    mutex_.Unlock();    
   }
 
   void AssertHeld() {
@@ -57,7 +55,6 @@ class InstrumentedMutex {
   Env* env_;
   int stats_code_;
   bool enable_owned_time_;
-  uint32_t tick_type_;
   PerfTimer time_recorder_; // the time between lock and unlock
 };
 
