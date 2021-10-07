@@ -19,7 +19,7 @@ class PerfTimer {
      return env_->NowNanos();
   }
 
-  void Stop(uint64_t start_time, uint32_t ticker_type);
+  void Measure(uint64_t start_time, uint32_t ticker_type);
 
  private:
   Env* const env_;

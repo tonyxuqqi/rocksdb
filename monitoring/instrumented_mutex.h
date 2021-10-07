@@ -20,34 +20,33 @@ class InstrumentedCondVar;
 // for collecting stats and instrumentation.
 class InstrumentedMutex {
  public:
-  explicit InstrumentedMutex(bool adaptive = false, PerfLevel enable_perf_level = PerfLevel::kEnableTime)
+  explicit InstrumentedMutex(bool adaptive = false, bool enable_owned_timer = false)
       : mutex_(adaptive), stats_(nullptr), env_(nullptr),
         stats_code_(0),
-        enable_perf_level_(enable_perf_level),
+        enable_owned_timer_(enable_owned_timer),
         time_recorder_(stats_),
-        ticker_type_(0),
-        last_start_time_(0) {}
+        mutex_own_ticker_type_(0),
+        last_locked_time_(0) {}
 
   InstrumentedMutex(
       Statistics* stats, Env* env,
-      int stats_code, bool adaptive = false, PerfLevel enable_perf_level = PerfLevel::kEnableTime)
+      int stats_code, bool adaptive = false, bool enable_owned_timer = false)
       : mutex_(adaptive), stats_(stats), env_(env),
         stats_code_(stats_code),
-        enable_perf_level_(enable_perf_level),
+        enable_owned_timer_(enable_owned_timer),
         time_recorder_(stats_),
-        ticker_type_(0),
-        last_start_time_(0) {}
+        mutex_own_ticker_type_(0),
+        last_locked_time_(0) {}
 
-  void Lock(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
+  void Lock(uint32_t mutex_own_ticker_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
 
   void Unlock() {
-    uint64_t start_time = last_start_time_;
-    uint32_t ticker_type = ticker_type_;
+    uint64_t last_locked_time = last_locked_time_;
+    uint32_t ticker_type = mutex_own_ticker_type_;
+
     mutex_.Unlock();    
-    if (start_time && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API && stats_code_ == DB_MUTEX_WAIT_MICROS) {
-        time_recorder_.Stop(start_time, ticker_type);
-    } else if (ticker_type == DB_MUTEX_OWN_MICROS_BY_COMPACTION) {
-        printf("ticket_type is compaction. Stats_code %d\n", stats_code_);
+    if (last_locked_time) {
+        time_recorder_.Measure(last_locked_time, ticker_type);
     }
   }
 
@@ -62,10 +61,10 @@ class InstrumentedMutex {
   Statistics* stats_;
   Env* env_;
   int stats_code_;
-  PerfLevel enable_perf_level_;
+  bool enable_owned_timer_;
   PerfTimer time_recorder_; // the time between lock and unlock
-  uint32_t ticker_type_;
-  uint64_t last_start_time_;
+  uint32_t mutex_own_ticker_type_;
+  uint64_t last_locked_time_;
 };
 
 // A wrapper class for port::Mutex that provides additional layer
