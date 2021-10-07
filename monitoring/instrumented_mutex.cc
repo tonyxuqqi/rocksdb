@@ -34,12 +34,13 @@ void InstrumentedMutex::LockInternal(uint32_t tick_type) {
 #endif
   bool record_start_time = false;
   if (enable_owned_time_ && tick_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
-     time_recorder_.Start(tick_type);
+     time_recorder_.Start();
      record_start_time = true; 
   }
   mutex_.Lock();
   if (record_start_time) {
      time_recorder_.RecordStart();
+     ticker_type_ = tick_type;
   }
 }
 

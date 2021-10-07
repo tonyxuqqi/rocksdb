@@ -24,7 +24,8 @@ class InstrumentedMutex {
       : mutex_(adaptive), stats_(nullptr), env_(nullptr),
         stats_code_(0),
         enable_owned_time_(enable_owned_time),
-        time_recorder_(stats_) {}
+        time_recorder_(stats_),
+        ticker_type_(0) {}
 
   InstrumentedMutex(
       Statistics* stats, Env* env,
@@ -32,14 +33,17 @@ class InstrumentedMutex {
       : mutex_(adaptive), stats_(stats), env_(env),
         stats_code_(stats_code),
         enable_owned_time_(enable_owned_time),
-        time_recorder_(stats_) {}
+        time_recorder_(stats_),
+        ticker_type_(0) {}
 
   void Lock(uint32_t tick_type = DB_MUTEX_OWN_MICROS_BY_OTHER);
 
   void Unlock() {
+    uint64_t start_record = time_recorder_.GetStartRecord();
+    uint32_t ticker_type = ticker_type_;
     mutex_.Unlock();    
-    if (enable_owned_time_) {
-        time_recorder_.Stop();
+    if (enable_owned_time_ && ticker_type != DB_MUTEX_OWN_MICROS_BY_USER_API) {
+        time_recorder_.Stop(start_record, ticker_type);
     }
   }
 
@@ -56,6 +60,7 @@ class InstrumentedMutex {
   int stats_code_;
   bool enable_owned_time_;
   PerfTimer time_recorder_; // the time between lock and unlock
+  uint32_t ticker_type_;
 };
 
 // A wrapper class for port::Mutex that provides additional layer

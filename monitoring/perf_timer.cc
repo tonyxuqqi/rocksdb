@@ -1,17 +1,16 @@
 #include "monitoring/perf_timer.h"
 namespace rocksdb {
 
-void PerfTimer::Stop() {
-    if (start_record_) {
-      uint64_t duration = time_now() - start_record_;
+void PerfTimer::Stop(uint64_t start_record, uint32_t ticker_type) {
+    if (start_record) {
+      uint64_t duration = time_now() - start_record;
       if (statistics_ != nullptr) {
         if (duration > 1000000000ull) {
-            printf("PerfTimer::Stop duration:%lld, ticker_type:%d \n", (long long)duration, ticker_type_);
+            printf("PerfTimer::Stop duration:%lld, ticker_type:%d \n", (long long)duration, ticker_type);
         } else {
-            RecordTick(statistics_, ticker_type_, duration);
+            RecordTick(statistics_, ticker_type, duration);
         }
       }
-      start_record_ = 0;
     }
 }
 

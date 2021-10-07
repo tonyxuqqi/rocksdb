@@ -15,15 +15,10 @@ class PerfTimer {
       : env_(Env::Default()),
         start_(0),
         start_record_(0),
-        statistics_(statistics),
-        ticker_type_(0) {}
+        last_start_record_(0),
+        statistics_(statistics) {}
 
-  ~PerfTimer() {
-    Stop();
-  }
-
-  void Start(uint32_t ticket_type) {
-    ticker_type_ = ticket_type;
+  void Start() {
     if (statistics_ != nullptr) {
       start_ = time_now();
     }
@@ -32,19 +27,23 @@ class PerfTimer {
   void RecordStart() {
      start_record_ = start_;
   }
+ 
+  uint64_t GetStartRecord() const {
+    return start_record_;
+  }
 
   uint64_t time_now() {
      return env_->NowNanos();
   }
 
-  void Stop();
+  void Stop(uint64_t start_record, uint32_t ticker_type);
 
  private:
   Env* const env_;
   uint64_t start_;
   uint64_t start_record_;
+  uint64_t last_start_record_;
   Statistics* statistics_;
-  uint32_t ticker_type_;
 };
 
 }  // namespace rocksdb
