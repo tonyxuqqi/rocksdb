@@ -2,6 +2,9 @@
 namespace rocksdb {
 
 void PerfTimer::Stop(uint64_t start_time, uint32_t ticker_type) {
+    if (ticker_type == DB_MUTEX_OWN_MICROS_BY_COMPACTION) {
+       printf("PerfTimer::Stop on compaction. %lld\n", (long long)start_time/1000);
+    }
     if (start_time == 0) {
         printf("PerfTimer::Stop duration: start_time is zero, ticker_type:%d \n", ticker_type); 
     }
