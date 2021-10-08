@@ -1005,7 +1005,7 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
   Status status;
 
   if (error_handler_.IsDBStopped()) {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     status = error_handler_.GetBGError();
   }
 
@@ -1014,7 +1014,7 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
   if (UNLIKELY(status.ok() &&
                !single_column_family_mode_.load(std::memory_order_acquire) &&
                total_log_size_ > GetMaxTotalWalSize())) {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     WaitForPendingWrites();
     status = SwitchWAL(write_context);
   }
@@ -1025,13 +1025,13 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
     // thread is writing to another DB with the same write buffer, they may also
     // be flushed. We may end up with flushing much more DBs than needed. It's
     // suboptimal but still correct.
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     WaitForPendingWrites();
     status = HandleWriteBufferFull(write_context);
   }
 
   if (UNLIKELY(status.ok() && !flush_scheduler_.Empty())) {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     WaitForPendingWrites();
     status = ScheduleFlushes(write_context);
   }
@@ -1047,7 +1047,7 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
     // for previous one. It might create a fairness issue that expiration
     // might happen for smaller writes but larger writes can go through.
     // Can optimize it if it is an issue.
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock l(&mutex_, DB_MUTEX_OWN_MICROS_BY_USER_API);
     status = DelayWrite(last_batch_group_size_, write_options);
     PERF_TIMER_START(write_pre_and_post_process_time);
   }
