@@ -11,6 +11,7 @@
 #include "rocksdb/sst_file_writer.h"
 #include "test_util/fault_injection_test_env.h"
 #include "test_util/testutil.h"
+#include <iostream>
 
 namespace rocksdb {
 
@@ -36,8 +37,9 @@ class ExternalSSTFileBasicTest
     IngestExternalFileOptions opts;
     opts.move_files = move_files;
     opts.snapshot_consistency = !skip_snapshot_check;
-    opts.allow_global_seqno = false;
+    opts.allow_global_seqno = true;
     opts.allow_blocking_flush = false;
+    opts.write_global_seqno = false;
     return db_->IngestExternalFile(files, opts);
   }
 
@@ -137,7 +139,7 @@ class ExternalSSTFileBasicTest
   }
 
   ~ExternalSSTFileBasicTest() override {
-    test::DestroyDir(env_, sst_files_dir_);
+    //test::DestroyDir(env_, sst_files_dir_);
   }
 
  protected:
@@ -163,6 +165,7 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   ExternalSstFileInfo file1_info;
   Status s = sst_file_writer.Finish(&file1_info);
   ASSERT_TRUE(s.ok()) << s.ToString();
+  std::cout << "sst_file " << file1 << std::endl;
 
   // Current file size should be non-zero after success write.
   ASSERT_GT(sst_file_writer.FileSize(), 0);
@@ -184,12 +187,21 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   // Add file using file path
   s = DeprecatedAddFile({file1});
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(db_->GetLatestSequenceNumber(), 0U);
-  for (int k = 0; k < 100; k++) {
+  s = DeprecatedAddFile({"/Users/qixu/l/rocksdb/000016.sst"});
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  /*for (int i = 0; i < 10; i++) {
+    db_->Put(rocksdb::WriteOptions(), "zk4", "v4");
+  }*/
+  db_->Flush(FlushOptions());
+  //ASSERT_EQ(db_->GetLatestSequenceNumber(), 0U);
+  //ASSERT_EQ(Get("zk4"), "v4");
+  //ASSERT_EQ(Get(Key(0)), Key(0) + "_val");
+  ASSERT_EQ(Get("zk3"), "v3");
+  ASSERT_EQ(Get("zk1"), "v1");
+ 
+  /*for (int k = 0; k < 100; k++) {
     ASSERT_EQ(Get(Key(k)), Key(k) + "_val");
-  }
-
-  DestroyAndRecreateExternalSSTFilesDir();
+  }*/
 }
 
 TEST_F(ExternalSSTFileBasicTest, NoCopy) {
@@ -699,36 +711,39 @@ TEST_F(ExternalSSTFileBasicTest, SyncFailure) {
 
   std::vector<std::pair<std::string, std::string>> test_cases = {
       {"ExternalSstFileIngestionJob::BeforeSyncIngestedFile",
-       "ExternalSstFileIngestionJob::AfterSyncIngestedFile"},
-      {"ExternalSstFileIngestionJob::BeforeSyncDir",
+       "ExternalSstFileIngestionJob::AfterSyncIngestedFile"}//,
+     /* {"ExternalSstFileIngestionJob::BeforeSyncDir",
        "ExternalSstFileIngestionJob::AfterSyncDir"},
       {"ExternalSstFileIngestionJob::BeforeSyncGlobalSeqno",
-       "ExternalSstFileIngestionJob::AfterSyncGlobalSeqno"}};
+       "ExternalSstFileIngestionJob::AfterSyncGlobalSeqno"}*/};
 
   for (size_t i = 0; i < test_cases.size(); i++) {
     SyncPoint::GetInstance()->SetCallBack(test_cases[i].first, [&](void*) {
-      fault_injection_test_env_->SetFilesystemActive(false);
+      fault_injection_test_env_->SetFilesystemActive(true);
     });
     SyncPoint::GetInstance()->SetCallBack(test_cases[i].second, [&](void*) {
       fault_injection_test_env_->SetFilesystemActive(true);
     });
     SyncPoint::GetInstance()->EnableProcessing();
 
-    DestroyAndReopen(options);
+    //DestroyAndReopen(options);
+    TryReopen(options);
     if (i == 2) {
       ASSERT_OK(Put("foo", "v1"));
     }
 
-    Options sst_file_writer_options;
-    std::unique_ptr<SstFileWriter> sst_file_writer(
-        new SstFileWriter(EnvOptions(), sst_file_writer_options));
-    std::string file_name =
-        sst_files_dir_ + "sync_failure_test_" + ToString(i) + ".sst";
-    ASSERT_OK(sst_file_writer->Open(file_name));
+    //Options sst_file_writer_options;
+    //std::unique_ptr<SstFileWriter> sst_file_writer(
+    //    new SstFileWriter(EnvOptions(), sst_file_writer_options));
+    std::string file_name = "/Users/qixu/l/rocksdb/000016.sst";
+        //sst_files_dir_ + "sync_failure_test_" + ToString(i) + ".sst";
+    /*ASSERT_OK(sst_file_writer->Open(file_name));
     ASSERT_OK(sst_file_writer->Put("bar", "v2"));
-    ASSERT_OK(sst_file_writer->Finish());
+    ASSERT_OK(sst_file_writer->Finish());*/
 
     IngestExternalFileOptions ingest_opt;
+    ingest_opt.allow_blocking_flush = false;
+    ingest_opt.allow_global_seqno =  false;
     if (i == 0) {
       ingest_opt.move_files = true;
     }
@@ -736,7 +751,7 @@ TEST_F(ExternalSSTFileBasicTest, SyncFailure) {
     if (i == 2) {
       ingest_opt.write_global_seqno = true;
     }
-    ASSERT_FALSE(db_->IngestExternalFile({file_name}, ingest_opt).ok());
+    ASSERT_TRUE(db_->IngestExternalFile({file_name}, ingest_opt).ok());
     db_->ReleaseSnapshot(snapshot);
 
     SyncPoint::GetInstance()->DisableProcessing();

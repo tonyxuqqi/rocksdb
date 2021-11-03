@@ -542,7 +542,7 @@ class IndexBlockIter final : public BlockIter<IndexValue> {
                   bool have_first_key, bool key_includes_seq,
                   bool value_is_full, bool block_contents_pinned) {
     InitializeBase(key_includes_seq ? comparator : user_comparator, data,
-                   restarts, num_restarts, kDisableGlobalSequenceNumber,
+                   restarts, num_restarts, global_seqno,
                    block_contents_pinned);
     key_includes_seq_ = key_includes_seq;
     raw_key_.SetIsUserKey(!key_includes_seq_);

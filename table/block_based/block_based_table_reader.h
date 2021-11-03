@@ -110,6 +110,7 @@ class BlockBasedTable : public TableReader {
                      bool skip_filters = false, int level = -1,
                      const bool immortal_table = false,
                      const SequenceNumber largest_seqno = 0,
+                     const SequenceNumber smallest_seqno = 1,
                      TailPrefetchStats* tail_prefetch_stats = nullptr,
                      BlockCacheTracer* const block_cache_tracer = nullptr);
 
@@ -410,7 +411,8 @@ class BlockBasedTable : public TableReader {
                                           TableProperties** table_properties);
   Status ReadPropertiesBlock(FilePrefetchBuffer* prefetch_buffer,
                              InternalIterator* meta_iter,
-                             const SequenceNumber largest_seqno);
+                             const SequenceNumber largest_seqno,
+                             const SequenceNumber smallest_seqno);
   Status ReadRangeDelBlock(FilePrefetchBuffer* prefetch_buffer,
                            InternalIterator* meta_iter,
                            const InternalKeyComparator& internal_comparator,
