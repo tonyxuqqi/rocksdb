@@ -542,7 +542,6 @@ bool DataBlockIter::ParseNextDataKey(const char* limit) {
              value_type == ValueType::kTypeMerge ||
              value_type == ValueType::kTypeDeletion ||
              value_type == ValueType::kTypeRangeDeletion);
-      assert(seqno == 0);
     }
 #endif  // NDEBUG
 
