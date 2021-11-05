@@ -12,6 +12,7 @@
 #include "test_util/fault_injection_test_env.h"
 #include "test_util/testutil.h"
 #include <iostream>
+#include "rocksdb/options.h"
 
 namespace rocksdb {
 
@@ -189,19 +190,37 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   ASSERT_TRUE(s.ok()) << s.ToString();
   s = DeprecatedAddFile({"/Users/qixu/l/rocksdb/000016.sst"});
   ASSERT_TRUE(s.ok()) << s.ToString();
-  /*for (int i = 0; i < 10; i++) {
-    db_->Put(rocksdb::WriteOptions(), "zk4", "v4");
-  }*/
-  db_->Flush(FlushOptions());
   //ASSERT_EQ(db_->GetLatestSequenceNumber(), 0U);
   //ASSERT_EQ(Get("zk4"), "v4");
   //ASSERT_EQ(Get(Key(0)), Key(0) + "_val");
   ASSERT_EQ(Get("zk3"), "v3");
   ASSERT_EQ(Get("zk1"), "v1");
- 
-  /*for (int k = 0; k < 100; k++) {
+  db_->Put(rocksdb::WriteOptions(), "zk3", "vv3");
+  db_->Put(rocksdb::WriteOptions(), "zk1", "vv1");
+  db_->Flush(FlushOptions());
+  ASSERT_EQ(Get("zk3"), "vv3");
+  ASSERT_EQ(Get("zk1"), "vv1");
+
+  ColumnFamilyMetaData cf_meta;
+  db_->GetColumnFamilyMetaData(&cf_meta);
+
+  std::vector<std::string> input_file_names;
+  for (auto level : cf_meta.levels) {
+    for (auto file : level.files) {
+      input_file_names.push_back(file.name);
+    }
+  }
+  CompactionOptions compact_options;
+  s = db_->CompactFiles(
+        compact_options,
+        input_file_names,
+        3);
+  ASSERT_TRUE(s.ok());
+  for (int k = 0; k < 100; k++) {
     ASSERT_EQ(Get(Key(k)), Key(k) + "_val");
-  }*/
+  }
+  ASSERT_EQ(Get("zk3"), "vv3");
+  ASSERT_EQ(Get("zk1"), "vv1");
 }
 
 TEST_F(ExternalSSTFileBasicTest, NoCopy) {
