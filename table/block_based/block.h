@@ -245,7 +245,7 @@ class GlobalSeqnoAppliedKey {
 
   Slice UpdateAndGetKey() {
     assert(init_);
-    if (global_seqno_ == kDisableGlobalSequenceNumber) {
+    if (global_seqno_ == kDisableGlobalSequenceNumber || key_->IsUserKey()) {
       return key_->GetKey();
     }
     ParsedInternalKey parsed(Slice(), 0, kTypeValue);

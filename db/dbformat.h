@@ -336,7 +336,7 @@ class IterKey {
   Slice GetKey() const { return Slice(key_, key_size_); }
 
   Slice GetInternalKey() const {
-    assert(!IsUserKey());
+    //assert(!IsUserKey());
     return Slice(key_, key_size_);
   }
 
