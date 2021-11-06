@@ -1033,7 +1033,7 @@ Status GetGlobalSequenceNumber(const TableProperties& table_properties,
           seqno_pos->second.c_str());
       return Status::Corruption(msg_buf.data());
     }
-    if (largest_seqno == smallest_seqno && largest_seqno != 0) {
+    if (largest_seqno == smallest_seqno && largest_seqno != 0) { // for case DBIteratorTestInstance/DBIteratorTest.PinnedDataIteratorReadAfterUpdate/0
        *seqno = largest_seqno;
     }
     return Status::OK();

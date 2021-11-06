@@ -185,6 +185,8 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   ASSERT_FALSE(s.ok()) << s.ToString();
 
   DestroyAndReopen(options);
+  db_->Put(rocksdb::WriteOptions(), "zk4", "v4");
+  db_->Flush(FlushOptions());
   // Add file using file path
   s = DeprecatedAddFile({file1});
   ASSERT_TRUE(s.ok()) << s.ToString();

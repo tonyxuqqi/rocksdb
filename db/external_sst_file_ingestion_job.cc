@@ -540,7 +540,7 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
       "ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile",
       &overlap_with_db);
   file_to_ingest->picked_level = target_level;
-  if (overlap_with_db && *assigned_seqno == 0) {
+  if (*assigned_seqno == 0) {
     *assigned_seqno = last_seqno + 1;
   }
   return status;
@@ -580,7 +580,7 @@ Status ExternalSstFileIngestionJob::AssignGlobalSeqnoForIngestedFile(
     return Status::OK();
   } else if (!ingestion_options_.allow_global_seqno) {
     return Status::InvalidArgument("Global seqno is required, but disabled");
-  } else if (file_to_ingest->global_seqno_offset == 0) {
+  } else if (file_to_ingest->global_seqno_offset == 0 && ingestion_options_.write_global_seqno) {
     return Status::InvalidArgument(
         "Trying to set global seqno for a file that dont have a global seqno "
         "field");
