@@ -575,13 +575,9 @@ Status ExternalSstFileIngestionJob::AssignGlobalSeqnoForIngestedFile(
     return Status::OK();
   } else if (!ingestion_options_.allow_global_seqno) {
     return Status::InvalidArgument("Global seqno is required, but disabled");
-  } else if (file_to_ingest->global_seqno_offset == 0 && ingestion_options_.write_global_seqno) {
-    return Status::InvalidArgument(
-        "Trying to set global seqno for a file that dont have a global seqno "
-        "field");
   }
 
-  if (ingestion_options_.write_global_seqno) {
+  if (ingestion_options_.write_global_seqno && file_to_ingest->global_seqno_offset != 0) {
     // Determine if we can write global_seqno to a given offset of file.
     // If the file system does not support random write, then we should not.
     // Otherwise we should.
