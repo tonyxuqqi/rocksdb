@@ -1066,7 +1066,9 @@ Status GetGlobalSequenceNumber(const TableProperties& table_properties,
     if (global_seqno == 0) {
       global_seqno = largest_seqno;
     }
-    if (global_seqno != largest_seqno) {
+
+    // In somecases, largest_seqno is not read from file directly (from TableReaderOption's first cor, which is set to 0 directly)
+    /*if (global_seqno != largest_seqno) {
       std::array<char, 200> msg_buf;
       snprintf(
           msg_buf.data(), msg_buf.max_size(),
@@ -1075,7 +1077,7 @@ Status GetGlobalSequenceNumber(const TableProperties& table_properties,
           version, seqno_pos->second.c_str(),
           static_cast<unsigned long long>(largest_seqno));
       return Status::Corruption(msg_buf.data());
-    }
+    }*/
   }
   *seqno = global_seqno;
 
