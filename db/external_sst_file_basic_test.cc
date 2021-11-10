@@ -732,39 +732,35 @@ TEST_F(ExternalSSTFileBasicTest, SyncFailure) {
 
   std::vector<std::pair<std::string, std::string>> test_cases = {
       {"ExternalSstFileIngestionJob::BeforeSyncIngestedFile",
-       "ExternalSstFileIngestionJob::AfterSyncIngestedFile"}//,
-     /* {"ExternalSstFileIngestionJob::BeforeSyncDir",
+       "ExternalSstFileIngestionJob::AfterSyncIngestedFile"},
+       {"ExternalSstFileIngestionJob::BeforeSyncDir",
        "ExternalSstFileIngestionJob::AfterSyncDir"},
       {"ExternalSstFileIngestionJob::BeforeSyncGlobalSeqno",
-       "ExternalSstFileIngestionJob::AfterSyncGlobalSeqno"}*/};
+       "ExternalSstFileIngestionJob::AfterSyncGlobalSeqno"}};
 
   for (size_t i = 0; i < test_cases.size(); i++) {
     SyncPoint::GetInstance()->SetCallBack(test_cases[i].first, [&](void*) {
-      fault_injection_test_env_->SetFilesystemActive(true);
+      fault_injection_test_env_->SetFilesystemActive(false);
     });
     SyncPoint::GetInstance()->SetCallBack(test_cases[i].second, [&](void*) {
       fault_injection_test_env_->SetFilesystemActive(true);
     });
     SyncPoint::GetInstance()->EnableProcessing();
 
-    //DestroyAndReopen(options);
-    TryReopen(options);
+    DestroyAndReopen(options);
     if (i == 2) {
       ASSERT_OK(Put("foo", "v1"));
     }
 
-    //Options sst_file_writer_options;
-    //std::unique_ptr<SstFileWriter> sst_file_writer(
-    //    new SstFileWriter(EnvOptions(), sst_file_writer_options));
-    std::string file_name = "/Users/qixu/l/rocksdb/000016.sst";
-        //sst_files_dir_ + "sync_failure_test_" + ToString(i) + ".sst";
-    /*ASSERT_OK(sst_file_writer->Open(file_name));
+    Options sst_file_writer_options;
+    std::unique_ptr<SstFileWriter> sst_file_writer(
+        new SstFileWriter(EnvOptions(), sst_file_writer_options));
+    std::string file_name =  sst_files_dir_ + "sync_failure_test_" + ToString(i) + ".sst";
+    ASSERT_OK(sst_file_writer->Open(file_name));
     ASSERT_OK(sst_file_writer->Put("bar", "v2"));
-    ASSERT_OK(sst_file_writer->Finish());*/
+    ASSERT_OK(sst_file_writer->Finish());
 
     IngestExternalFileOptions ingest_opt;
-    ingest_opt.allow_blocking_flush = false;
-    ingest_opt.allow_global_seqno =  false;
     if (i == 0) {
       ingest_opt.move_files = true;
     }
@@ -772,7 +768,7 @@ TEST_F(ExternalSSTFileBasicTest, SyncFailure) {
     if (i == 2) {
       ingest_opt.write_global_seqno = true;
     }
-    ASSERT_TRUE(db_->IngestExternalFile({file_name}, ingest_opt).ok());
+    ASSERT_FALSE(db_->IngestExternalFile({file_name}, ingest_opt).ok());
     db_->ReleaseSnapshot(snapshot);
 
     SyncPoint::GetInstance()->DisableProcessing();
