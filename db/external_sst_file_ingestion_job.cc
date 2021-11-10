@@ -221,8 +221,9 @@ Status ExternalSstFileIngestionJob::Run() {
     if (ingestion_options_.ingest_behind) {
       status = CheckLevelForIngestedBehindFile(&f);
     } else {
+      bool non_external_sst = f.global_seqno_offset == 0 && f.version == 2;
       status = AssignLevelAndSeqnoForIngestedFile(
-         super_version, force_global_seqno, cfd_->ioptions()->compaction_style,
+         super_version, force_global_seqno || non_external_sst, cfd_->ioptions()->compaction_style,
          &f, &assigned_seqno);
     }
     if (!status.ok()) {
@@ -480,6 +481,7 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
     }
   }
 
+  bool overlap_with_db = false;
   Arena arena;
   ReadOptions ro;
   ro.total_order_seek = true;
@@ -503,6 +505,7 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
         // We must use L0 or any level higher than `lvl` to be able to overwrite
         // the keys that we overlap with in this level, We also need to assign
         // this file a seqno to overwrite the existing keys in level `lvl`
+        overlap_with_db = true;
         break;
       }
 
@@ -534,8 +537,11 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
       target_level = lvl;
     }
   }
+  TEST_SYNC_POINT_CALLBACK(
+      "ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile",
+      &overlap_with_db);
   file_to_ingest->picked_level = target_level;
-  if (*assigned_seqno == 0) {
+  if (overlap_with_db && *assigned_seqno == 0) {
     *assigned_seqno = last_seqno + 1;
   }
   return status;

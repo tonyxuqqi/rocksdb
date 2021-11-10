@@ -245,7 +245,7 @@ class GlobalSeqnoAppliedKey {
 
   Slice UpdateAndGetKey() {
     assert(init_);
-    if (global_seqno_ == kDisableGlobalSequenceNumber || key_->IsUserKey()) {
+    if (global_seqno_ == kDisableGlobalSequenceNumber) {
       return key_->GetKey();
     }
     ParsedInternalKey parsed(Slice(), 0, kTypeValue);
@@ -542,7 +542,8 @@ class IndexBlockIter final : public BlockIter<IndexValue> {
                   bool have_first_key, bool key_includes_seq,
                   bool value_is_full, bool block_contents_pinned) {
     InitializeBase(key_includes_seq ? comparator : user_comparator, data,
-                   restarts, num_restarts, global_seqno,
+                   restarts, num_restarts, 
+                   key_includes_seq ? global_seqno : kDisableGlobalSequenceNumber, // DBTest.ReadFromPersistedTier will fail without the check
                    block_contents_pinned);
     key_includes_seq_ = key_includes_seq;
     raw_key_.SetIsUserKey(!key_includes_seq_);

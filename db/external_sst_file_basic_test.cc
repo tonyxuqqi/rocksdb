@@ -192,7 +192,7 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   ASSERT_TRUE(s.ok()) << s.ToString();
   s = DeprecatedAddFile({"/Users/qixu/l/rocksdb/000016.sst"});
   ASSERT_TRUE(s.ok()) << s.ToString();
-  //ASSERT_EQ(db_->GetLatestSequenceNumber(), 0U);
+  ASSERT_EQ(db_->GetLatestSequenceNumber(), 2U);
   //ASSERT_EQ(Get("zk4"), "v4");
   //ASSERT_EQ(Get(Key(0)), Key(0) + "_val");
   ASSERT_EQ(Get("zk3"), "v3");
