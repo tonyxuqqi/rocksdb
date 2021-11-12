@@ -12,6 +12,7 @@
 #include "rocksdb/db_dump_tool.h"
 #include "rocksdb/env.h"
 #include "util/coding.h"
+#include <string>
 
 namespace rocksdb {
 
@@ -32,7 +33,15 @@ bool DbDumpTool::Run(const DumpOptions& dump_options,
 
   // Open the database
   options.create_if_missing = false;
-  status = rocksdb::DB::OpenForReadOnly(options, dump_options.db_path, &dbptr);
+ 
+  std::vector<ColumnFamilyDescriptor> cfds;
+  std::vector<ColumnFamilyHandle*> handles;
+  cfds.push_back(ColumnFamilyDescriptor());
+  std::string names[3] = {"write", "lock", "raft"};
+  for(size_t i = 0; i < 3; i++) {
+     cfds.push_back(ColumnFamilyDescriptor(names[i], ColumnFamilyOptions()));
+  }
+  status = rocksdb::DB::OpenForReadOnly(options, dump_options.db_path, cfds, &handles, &dbptr, false);
   if (!status.ok()) {
     std::cerr << "Unable to open database '" << dump_options.db_path
               << "' for reading: " << status.ToString() << std::endl;
@@ -90,41 +99,64 @@ bool DbDumpTool::Run(const DumpOptions& dump_options,
     return false;
   }
 
-  const std::unique_ptr<rocksdb::Iterator> it(
-      db->NewIterator(rocksdb::ReadOptions()));
-  for (it->SeekToFirst(); it->Valid(); it->Next()) {
-    char keysize[4];
-    rocksdb::EncodeFixed32(keysize, (uint32_t)it->key().size());
-    rocksdb::Slice keysizeslice(keysize, 4);
-    status = dumpfile->Append(keysizeslice);
-    if (!status.ok()) {
-      std::cerr << "Append failed: " << status.ToString() << std::endl;
-      return false;
-    }
-    status = dumpfile->Append(it->key());
-    if (!status.ok()) {
-      std::cerr << "Append failed: " << status.ToString() << std::endl;
-      return false;
-    }
-
-    char valsize[4];
-    rocksdb::EncodeFixed32(valsize, (uint32_t)it->value().size());
-    rocksdb::Slice valsizeslice(valsize, 4);
-    status = dumpfile->Append(valsizeslice);
-    if (!status.ok()) {
-      std::cerr << "Append failed: " << status.ToString() << std::endl;
-      return false;
-    }
-    status = dumpfile->Append(it->value());
-    if (!status.ok()) {
-      std::cerr << "Append failed: " << status.ToString() << std::endl;
-      return false;
-    }
+  std::vector<std::string> cfs;
+  DB::ListColumnFamilies(DBOptions(), dump_options.db_path, &cfs);
+    std::vector<std::string> livefiles;
+  uint64_t manifest_file_size;
+  db->GetLiveFiles(livefiles, &manifest_file_size, false);
+  for (size_t i = 0; i < livefiles.size(); i++) {
+      std::cout << "file " << livefiles[i] << std::endl;
   }
-  if (!it->status().ok()) {
-    std::cerr << "Database iteration failed: " << status.ToString()
-              << std::endl;
-    return false;
+  for(size_t i = 0; i < cfs.size(); i++) {
+      ColumnFamilyHandle* cf = handles[i];
+      std::cout << "dumping cf " << cfs[i] << std::endl;
+      ColumnFamilyMetaData meta;
+      db->GetColumnFamilyMetaData(cf, &meta);
+      std::vector<LevelMetaData>& levels = meta.levels;
+      std::cout << "file count " << meta.file_count << "  level count " << levels.size();
+      for(size_t l = 0; l < levels.size(); l++) {
+          std::cout << "level " << levels[l].level <<  "total size " << levels[l].size << std::endl;
+          for(size_t j = 0; j < levels[l].files.size(); j++) {
+             std::cout << "sst name:" << levels[l].files[j].name << "  size " << levels[l].files[j].size << std::endl;
+          }
+      }
+  const std::unique_ptr<rocksdb::Iterator> it(
+      db->NewIterator(rocksdb::ReadOptions(), handles[i]));
+	  for (it->SeekToFirst(); it->Valid(); it->Next()) {
+	    char keysize[4];
+	    rocksdb::EncodeFixed32(keysize, (uint32_t)it->key().size());
+	    rocksdb::Slice keysizeslice(keysize, 4);
+	    status = dumpfile->Append(keysizeslice);
+	    if (!status.ok()) {
+	      std::cerr << "Append failed: " << status.ToString() << std::endl;
+	      return false;
+	    }
+	    status = dumpfile->Append(it->key());
+	    if (!status.ok()) {
+	      std::cerr << "Append failed: " << status.ToString() << std::endl;
+	      return false;
+	    }
+
+	    char valsize[4];
+	    rocksdb::EncodeFixed32(valsize, (uint32_t)it->value().size());
+	    rocksdb::Slice valsizeslice(valsize, 4);
+	    status = dumpfile->Append(valsizeslice);
+	    if (!status.ok()) {
+	      std::cerr << "Append failed: " << status.ToString() << std::endl;
+	      return false;
+	    }
+	    status = dumpfile->Append(it->value());
+	    if (!status.ok()) {
+	      std::cerr << "Append failed: " << status.ToString() << std::endl;
+	      return false;
+	    }
+	  }
+	  if (!it->status().ok()) {
+	    std::cerr << "Database iteration failed: " << status.ToString()
+		      << std::endl;
+	    return false;
+	  }
+	  delete cf;
   }
   return true;
 }

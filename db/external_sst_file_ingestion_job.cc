@@ -218,22 +218,32 @@ Status ExternalSstFileIngestionJob::Run() {
 
   for (IngestedFileInfo& f : files_to_ingest_) {
     SequenceNumber assigned_seqno = 0;
+    bool internal_sst = f.global_seqno_offset == 0 && f.version == 2;
     if (ingestion_options_.ingest_behind) {
       status = CheckLevelForIngestedBehindFile(&f);
     } else {
       status = AssignLevelAndSeqnoForIngestedFile(
-         super_version, force_global_seqno, cfd_->ioptions()->compaction_style,
+         super_version, force_global_seqno && !internal_sst, cfd_->ioptions()->compaction_style,
          &f, &assigned_seqno);
     }
     if (!status.ok()) {
       return status;
     }
+    if (internal_sst) {
+        if (f.largest_seqno > max_seqno_) {
+            max_seqno_ = f.largest_seqno; 
+        }
+        assigned_seqno = 0; // never use global seqno for internal sst;
+        f.assigned_seqno = 0;
+    }
     status = AssignGlobalSeqnoForIngestedFile(&f, assigned_seqno);
     TEST_SYNC_POINT_CALLBACK("ExternalSstFileIngestionJob::Run",
                              &assigned_seqno);
+
     if (assigned_seqno == last_seqno + 1) {
-      consumed_seqno_ = true;
+        consumed_seqno_ = true;
     }
+    
     if (!status.ok()) {
       return status;
     }
@@ -364,28 +374,30 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   // Get table version
   auto version_iter = uprops.find(ExternalSstFilePropertyNames::kVersion);
   if (version_iter == uprops.end()) {
-    return Status::Corruption("External file version not found");
+    file_to_ingest->version = 2;
+  } else {
+    file_to_ingest->version = DecodeFixed32(version_iter->second.c_str());
   }
-  file_to_ingest->version = DecodeFixed32(version_iter->second.c_str());
-
+  
   auto seqno_iter = uprops.find(ExternalSstFilePropertyNames::kGlobalSeqno);
   if (file_to_ingest->version == 2) {
     // version 2 imply that we have global sequence number
     if (seqno_iter == uprops.end()) {
-      return Status::Corruption(
-          "External file global sequence number not found");
-    }
+          file_to_ingest->original_seqno = 0;
+          file_to_ingest->global_seqno_offset = 0;
 
-    // Set the global sequence number
-    file_to_ingest->original_seqno = DecodeFixed64(seqno_iter->second.c_str());
-    auto offsets_iter = props->properties_offsets.find(
-        ExternalSstFilePropertyNames::kGlobalSeqno);
-    if (offsets_iter == props->properties_offsets.end() ||
-        offsets_iter->second == 0) {
-      file_to_ingest->global_seqno_offset = 0;
-      return Status::Corruption("Was not able to find file global seqno field");
+    } else {
+      // Set the global sequence number
+      file_to_ingest->original_seqno = DecodeFixed64(seqno_iter->second.c_str());
+      auto offsets_iter = props->properties_offsets.find(
+          ExternalSstFilePropertyNames::kGlobalSeqno);
+      if (offsets_iter == props->properties_offsets.end() ||
+          offsets_iter->second == 0) {
+        file_to_ingest->global_seqno_offset = 0;
+        return Status::Corruption("Was not able to find file global seqno field");
+      }
+      file_to_ingest->global_seqno_offset = static_cast<size_t>(offsets_iter->second);
     }
-    file_to_ingest->global_seqno_offset = static_cast<size_t>(offsets_iter->second);
   } else if (file_to_ingest->version == 1) {
     // SST file V1 should not have global seqno field
     assert(seqno_iter == uprops.end());
@@ -423,19 +435,14 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
     if (!ParseInternalKey(iter->key(), &key)) {
       return Status::Corruption("external file have corrupted keys");
     }
-    if (key.sequence != 0) {
-      return Status::Corruption("external file have non zero sequence number");
-    }
     file_to_ingest->smallest_user_key = key.user_key.ToString();
 
     iter->SeekToLast();
     if (!ParseInternalKey(iter->key(), &key)) {
       return Status::Corruption("external file have corrupted keys");
     }
-    if (key.sequence != 0) {
-      return Status::Corruption("external file have non zero sequence number");
-    }
     file_to_ingest->largest_user_key = key.user_key.ToString();
+    file_to_ingest->largest_seqno = key.sequence;
 
     bounds_set = true;
   }
@@ -540,7 +547,7 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
       target_level = lvl;
     }
   }
- TEST_SYNC_POINT_CALLBACK(
+  TEST_SYNC_POINT_CALLBACK(
       "ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile",
       &overlap_with_db);
   file_to_ingest->picked_level = target_level;
@@ -584,13 +591,9 @@ Status ExternalSstFileIngestionJob::AssignGlobalSeqnoForIngestedFile(
     return Status::OK();
   } else if (!ingestion_options_.allow_global_seqno) {
     return Status::InvalidArgument("Global seqno is required, but disabled");
-  } else if (file_to_ingest->global_seqno_offset == 0) {
-    return Status::InvalidArgument(
-        "Trying to set global seqno for a file that dont have a global seqno "
-        "field");
   }
 
-  if (ingestion_options_.write_global_seqno) {
+  if (ingestion_options_.write_global_seqno && file_to_ingest->global_seqno_offset != 0) {
     // Determine if we can write global_seqno to a given offset of file.
     // If the file system does not support random write, then we should not.
     // Otherwise we should.

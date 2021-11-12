@@ -3837,11 +3837,15 @@ Status DBImpl::IngestExternalFiles(
       }
     }
     // Run ingestion jobs.
+    SequenceNumber max_seqno = 0;
     if (status.ok()) {
       for (size_t i = 0; i != num_cfs; ++i) {
         status = ingestion_jobs[i].Run();
         if (!status.ok()) {
           break;
+        }
+        if (ingestion_jobs[i].MaxSeqNo() > max_seqno) {
+            max_seqno = ingestion_jobs[i].MaxSeqNo();          
         }
       }
     }
@@ -3854,11 +3858,17 @@ Status DBImpl::IngestExternalFiles(
                ingestion_jobs[i].ShouldIncrementLastSequence());
       }
 #endif
-      if (should_increment_last_seqno) {
-        const SequenceNumber last_seqno = versions_->LastSequence();
-        versions_->SetLastAllocatedSequence(last_seqno + 1);
-        versions_->SetLastPublishedSequence(last_seqno + 1);
-        versions_->SetLastSequence(last_seqno + 1);
+      if (max_seqno > versions_->LastSequence()) {
+        versions_->SetLastAllocatedSequence(max_seqno + 1);
+        versions_->SetLastPublishedSequence(max_seqno + 1);
+        versions_->SetLastSequence(max_seqno + 1); 
+      } else {
+        if (should_increment_last_seqno) {
+          const SequenceNumber last_seqno = versions_->LastSequence();
+          versions_->SetLastAllocatedSequence(last_seqno + 1);
+          versions_->SetLastPublishedSequence(last_seqno + 1);
+          versions_->SetLastSequence(last_seqno + 1);
+        }
       }
       autovector<ColumnFamilyData*> cfds_to_commit;
       autovector<const MutableCFOptions*> mutable_cf_options_list;

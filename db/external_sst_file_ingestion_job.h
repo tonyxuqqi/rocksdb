@@ -63,6 +63,8 @@ struct IngestedFileInfo {
   // by default.
   bool copy_file = true;
 
+  SequenceNumber largest_seqno = 0;
+
   InternalKey smallest_internal_key() const {
     return InternalKey(smallest_user_key, assigned_seqno,
                        ValueType::kTypeValue);
@@ -90,7 +92,8 @@ class ExternalSstFileIngestionJob {
         ingestion_options_(ingestion_options),
         directories_(directories),
         job_start_time_(env_->NowMicros()),
-        consumed_seqno_(false) {
+        consumed_seqno_(false),
+        max_seqno_(0) {
     assert(directories != nullptr);
   }
 
@@ -128,6 +131,7 @@ class ExternalSstFileIngestionJob {
   // Whether to increment VersionSet's seqno after this job runs
   bool ShouldIncrementLastSequence() const { return consumed_seqno_; }
 
+  SequenceNumber MaxSeqNo() const { return max_seqno_;}
  private:
   // Open the external file and populate `file_to_ingest` with all the
   // external information we need to ingest this file.
@@ -175,6 +179,7 @@ class ExternalSstFileIngestionJob {
   VersionEdit edit_;
   uint64_t job_start_time_;
   bool consumed_seqno_;
+  SequenceNumber max_seqno_;
 };
 
 }  // namespace rocksdb

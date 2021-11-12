@@ -11,6 +11,8 @@
 #include "rocksdb/sst_file_writer.h"
 #include "test_util/fault_injection_test_env.h"
 #include "test_util/testutil.h"
+#include <iostream>
+#include "rocksdb/options.h"
 
 namespace rocksdb {
 
@@ -36,8 +38,9 @@ class ExternalSSTFileBasicTest
     IngestExternalFileOptions opts;
     opts.move_files = move_files;
     opts.snapshot_consistency = !skip_snapshot_check;
-    opts.allow_global_seqno = false;
+    opts.allow_global_seqno = true;
     opts.allow_blocking_flush = false;
+    opts.write_global_seqno = false;
     return db_->IngestExternalFile(files, opts);
   }
 
@@ -137,7 +140,7 @@ class ExternalSSTFileBasicTest
   }
 
   ~ExternalSSTFileBasicTest() override {
-    test::DestroyDir(env_, sst_files_dir_);
+    //test::DestroyDir(env_, sst_files_dir_);
   }
 
  protected:
@@ -163,6 +166,7 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   ExternalSstFileInfo file1_info;
   Status s = sst_file_writer.Finish(&file1_info);
   ASSERT_TRUE(s.ok()) << s.ToString();
+  std::cout << "sst_file " << file1 << std::endl;
 
   // Current file size should be non-zero after success write.
   ASSERT_GT(sst_file_writer.FileSize(), 0);
@@ -181,15 +185,63 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   ASSERT_FALSE(s.ok()) << s.ToString();
 
   DestroyAndReopen(options);
+  db_->Put(rocksdb::WriteOptions(), "zk4", "v4");
+  db_->Flush(FlushOptions());
   // Add file using file path
   s = DeprecatedAddFile({file1});
+  std::vector<std::string> livefiles;
+  uint64_t manifest_file_size;
+  db_->GetLiveFiles(livefiles, &manifest_file_size, false);
+  for (size_t i = 0; i < livefiles.size(); i++) {
+      std::cout << "file " << livefiles[i] << std::endl;
+  }
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(db_->GetLatestSequenceNumber(), 0U);
+  s = DeprecatedAddFile({"/Users/qixu/l/rocksdb/000016.sst"});
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  //ASSERT_EQ(db_->GetLatestSequenceNumber(), 2U);
+  livefiles.clear();
+  db_->GetLiveFiles(livefiles, &manifest_file_size, false);
+  for (size_t i = 0; i < livefiles.size(); i++) {
+      std::cout << "file " << livefiles[i] << std::endl;
+  }
+  TryReopen(options);
+  livefiles.clear();
+  db_->GetLiveFiles(livefiles, &manifest_file_size, false);
+  for (size_t i = 0; i < livefiles.size(); i++) {
+      std::cout << "file " << livefiles[i] << std::endl;
+  }
+  //ASSERT_EQ(Get("zk4"), "v4");
+  //ASSERT_EQ(Get(Key(0)), Key(0) + "_val");
+  ASSERT_EQ(Get("zk3"), "v3");
+  ASSERT_EQ(Get("zk1"), "v1");
+  db_->Put(rocksdb::WriteOptions(), "zk3", "vv3");
+  db_->Put(rocksdb::WriteOptions(), "zk1", "vv1");
+  db_->Put(rocksdb::WriteOptions(), "zk3", "vvv3");
+  db_->Put(rocksdb::WriteOptions(), "zk1", "vvv1");
+  ASSERT_EQ(Get("zk3"), "vvv3");
+  ASSERT_EQ(Get("zk1"), "vvv1");
+  db_->Flush(FlushOptions());
+
+  ColumnFamilyMetaData cf_meta;
+  db_->GetColumnFamilyMetaData(&cf_meta);
+
+  std::vector<std::string> input_file_names;
+  for (auto level : cf_meta.levels) {
+    for (auto file : level.files) {
+      input_file_names.push_back(file.name);
+    }
+  }
+  CompactionOptions compact_options;
+  s = db_->CompactFiles(
+        compact_options,
+        input_file_names,
+        3);
+  ASSERT_TRUE(s.ok());
   for (int k = 0; k < 100; k++) {
     ASSERT_EQ(Get(Key(k)), Key(k) + "_val");
   }
-
-  DestroyAndRecreateExternalSSTFilesDir();
+  ASSERT_EQ(Get("zk3"), "vvv3");
+  ASSERT_EQ(Get("zk1"), "vvv1");
 }
 
 TEST_F(ExternalSSTFileBasicTest, NoCopy) {
@@ -700,7 +752,7 @@ TEST_F(ExternalSSTFileBasicTest, SyncFailure) {
   std::vector<std::pair<std::string, std::string>> test_cases = {
       {"ExternalSstFileIngestionJob::BeforeSyncIngestedFile",
        "ExternalSstFileIngestionJob::AfterSyncIngestedFile"},
-      {"ExternalSstFileIngestionJob::BeforeSyncDir",
+       {"ExternalSstFileIngestionJob::BeforeSyncDir",
        "ExternalSstFileIngestionJob::AfterSyncDir"},
       {"ExternalSstFileIngestionJob::BeforeSyncGlobalSeqno",
        "ExternalSstFileIngestionJob::AfterSyncGlobalSeqno"}};
@@ -722,8 +774,7 @@ TEST_F(ExternalSSTFileBasicTest, SyncFailure) {
     Options sst_file_writer_options;
     std::unique_ptr<SstFileWriter> sst_file_writer(
         new SstFileWriter(EnvOptions(), sst_file_writer_options));
-    std::string file_name =
-        sst_files_dir_ + "sync_failure_test_" + ToString(i) + ".sst";
+    std::string file_name =  sst_files_dir_ + "sync_failure_test_" + ToString(i) + ".sst";
     ASSERT_OK(sst_file_writer->Open(file_name));
     ASSERT_OK(sst_file_writer->Put("bar", "v2"));
     ASSERT_OK(sst_file_writer->Finish());
