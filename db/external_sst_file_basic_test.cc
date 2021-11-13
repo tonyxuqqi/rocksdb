@@ -35,6 +35,7 @@ class ExternalSSTFileBasicTest
   Status DeprecatedAddFile(const std::vector<std::string>& files,
                            bool move_files = false,
                            bool skip_snapshot_check = false) {
+    (void)skip_snapshot_check;
     IngestExternalFileOptions opts;
     opts.move_files = move_files;
     opts.snapshot_consistency = !skip_snapshot_check;
@@ -140,7 +141,8 @@ class ExternalSSTFileBasicTest
   }
 
   ~ExternalSSTFileBasicTest() override {
-    //test::DestroyDir(env_, sst_files_dir_);
+    std::cout << "sst_files_dir_ " << sst_files_dir_ << std::endl; 
+    test::DestroyDir(env_, sst_files_dir_);
   }
 
  protected:
@@ -242,6 +244,45 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
   }
   ASSERT_EQ(Get("zk3"), "vvv3");
   ASSERT_EQ(Get("zk1"), "vvv1");
+}
+
+TEST_F(ExternalSSTFileBasicTest, DirectIngest) {
+  Options options = CurrentOptions();
+
+  DestroyAndReopen(options);
+  std::string ssts[] = {"/Users/qixu/l/rocksdb/sst/000007.sst",
+                        "/Users/qixu/l/rocksdb/sst/000010.sst",
+                        "/Users/qixu/l/rocksdb/sst/000012.sst",
+                        "/Users/qixu/l/rocksdb/sst/000014.sst",
+                        "/Users/qixu/l/rocksdb/sst/000016.sst",
+                        "/Users/qixu/l/rocksdb/sst/000018.sst",
+                        "/Users/qixu/l/rocksdb/sst/000020.sst",
+                        "/Users/qixu/l/rocksdb/sst/000022.sst",
+                        "/Users/qixu/l/rocksdb/sst/000024.sst",      
+                        "/Users/qixu/l/rocksdb/sst/000026.sst"};
+  for (int t = 10; t < 20; t++) {
+    for(int i = 0; i < 100; i++) {
+      db_->Put(rocksdb::WriteOptions(), Key(i+t*100), Key(i+t*100));
+    }
+    db_->Flush(FlushOptions());
+  }
+
+  for(int i = 0; i < 10; i++) {
+    Status s = DeprecatedAddFile({ssts[i]});
+    ASSERT_TRUE(s.ok()) << s.ToString();
+  }
+  for (int t = 0; t < 20; t++) {
+    for(int i = 0; i < 100; i++) {
+      ASSERT_EQ(Get(Key(i+t*100)), Key(i+t*100));
+    }
+  }
+  /*std::vector<std::string> livefiles;
+  uint64_t manifest_file_size;
+  db_->GetLiveFiles(livefiles, &manifest_file_size, false);
+  for (size_t i = 0; i < livefiles.size(); i++) {
+      std::cout << "file " << livefiles[i] << std::endl;
+  }*/
+
 }
 
 TEST_F(ExternalSSTFileBasicTest, NoCopy) {

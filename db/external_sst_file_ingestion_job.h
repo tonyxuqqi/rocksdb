@@ -62,7 +62,7 @@ struct IngestedFileInfo {
   // ingestion_options.move_files is false by default, thus copy_file is true
   // by default.
   bool copy_file = true;
-
+  SequenceNumber smallest_seqno = 0;
   SequenceNumber largest_seqno = 0;
 
   InternalKey smallest_internal_key() const {

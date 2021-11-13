@@ -237,12 +237,17 @@ Status ExternalSstFileIngestionJob::Run() {
     if (!status.ok()) {
       return status;
     }
+    SequenceNumber smallest = f.smallest_seqno;
+    SequenceNumber largest = f.largest_seqno;
     if (internal_sst) {
         if (f.largest_seqno > max_seqno_) {
             max_seqno_ = f.largest_seqno; 
         }
         assigned_seqno = 0; // never use global seqno for internal sst;
         f.assigned_seqno = 0;
+    } else {
+      smallest = f.assigned_seqno;
+      largest = f.assigned_seqno; 
     }
     status = AssignGlobalSeqnoForIngestedFile(&f, assigned_seqno);
     TEST_SYNC_POINT_CALLBACK("ExternalSstFileIngestionJob::Run",
@@ -257,7 +262,7 @@ Status ExternalSstFileIngestionJob::Run() {
     }
     edit_.AddFile(f.picked_level, f.fd.GetNumber(), f.fd.GetPathId(),
                   f.fd.GetFileSize(), f.smallest_internal_key(),
-                  f.largest_internal_key(), f.assigned_seqno, f.assigned_seqno,
+                  f.largest_internal_key(), smallest, largest,
                   false);
   }
   ROCKS_LOG_INFO(
@@ -450,6 +455,7 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
       return Status::Corruption("external file have corrupted keys");
     }
     file_to_ingest->smallest_user_key = key.user_key.ToString();
+    file_to_ingest->smallest_seqno = key.sequence;
 
     iter->SeekToLast();
     if (!ParseInternalKey(iter->key(), &key)) {
