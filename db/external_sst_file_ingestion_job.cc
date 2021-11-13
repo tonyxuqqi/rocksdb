@@ -31,10 +31,12 @@ Status ExternalSstFileIngestionJob::Prepare(
     uint64_t next_file_number, SuperVersion* sv) {
   Status status;
 
+  ROCKS_LOG_INFO(db_options_.info_log, "Prepare ingesting started. File count %d", (int)external_files_paths.size());
   // Read the information of files we are ingesting
   for (const std::string& file_path : external_files_paths) {
     IngestedFileInfo file_to_ingest;
     status = GetIngestedFileInfo(file_path, &file_to_ingest, sv);
+    ROCKS_LOG_INFO(db_options_.info_log, "Prepare ingesting %s IsOk: %d", file_path.c_str(), status.ok());
     if (!status.ok()) {
       return status;
     }
@@ -218,6 +220,11 @@ Status ExternalSstFileIngestionJob::Run() {
   // The levels that the files will be ingested into
 
   for (IngestedFileInfo& f : files_to_ingest_) {
+    ROCKS_LOG_INFO(
+        db_options_.info_log,
+        "ingesting file %s",
+        f.external_file_path.c_str()
+    );
     SequenceNumber assigned_seqno = 0;
     bool internal_sst = f.global_seqno_offset == 0 && f.version == 2;
     if (ingestion_options_.ingest_behind) {
@@ -253,6 +260,12 @@ Status ExternalSstFileIngestionJob::Run() {
                   f.largest_internal_key(), f.assigned_seqno, f.assigned_seqno,
                   false);
   }
+  ROCKS_LOG_INFO(
+    db_options_.info_log,
+    "ExternalSstFileIngestionJob::Run edit_ count %d",
+    (int)edit_.NumEntries()
+  );
+  
   return status;
 }
 

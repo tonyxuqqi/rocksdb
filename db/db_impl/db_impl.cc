@@ -3860,6 +3860,7 @@ Status DBImpl::IngestExternalFiles(
       }
 #endif
       if (max_seqno > versions_->LastSequence()) {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log, "Setting max seqno  %" PRIu64, (max_seqno+1));
         versions_->SetLastAllocatedSequence(max_seqno + 1);
         versions_->SetLastPublishedSequence(max_seqno + 1);
         versions_->SetLastSequence(max_seqno + 1); 
