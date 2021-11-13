@@ -237,6 +237,10 @@ Status ExternalSstFileIngestionJob::Run() {
     if (!status.ok()) {
       return status;
     }
+   
+    status = AssignGlobalSeqnoForIngestedFile(&f, assigned_seqno);
+    TEST_SYNC_POINT_CALLBACK("ExternalSstFileIngestionJob::Run",
+                             &assigned_seqno);
     SequenceNumber smallest = f.smallest_seqno;
     SequenceNumber largest = f.largest_seqno;
     if (internal_sst) {
@@ -249,9 +253,6 @@ Status ExternalSstFileIngestionJob::Run() {
       smallest = f.assigned_seqno;
       largest = f.assigned_seqno; 
     }
-    status = AssignGlobalSeqnoForIngestedFile(&f, assigned_seqno);
-    TEST_SYNC_POINT_CALLBACK("ExternalSstFileIngestionJob::Run",
-                             &assigned_seqno);
 
     if (assigned_seqno == last_seqno + 1) {
         consumed_seqno_ = true;
