@@ -99,6 +99,7 @@ Status ExternalSstFileIngestionJob::Prepare(
     if (ingestion_options_.move_files) {
       status = env_->LinkFile(path_outside_db, path_inside_db);
       if (status.ok()) {
+        ROCKS_LOG_INFO(db_options_.info_log, "LinkFile from %s to %s", path_outside_db.c_str(), path_inside_db.c_str());
         // It is unsafe to assume application had sync the file and file
         // directory before ingest the file. For integrity of RocksDB we need
         // to sync the file.
