@@ -3654,6 +3654,7 @@ Status DBImpl::IngestExternalFile(
 
 Status DBImpl::IngestExternalFiles(
     const std::vector<IngestExternalFileArg>& args) {
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, "IngestExternalFiles is called");
   if (args.empty()) {
     return Status::InvalidArgument("ingestion arg list is empty");
   }
