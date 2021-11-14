@@ -99,6 +99,9 @@ class CompactionIterator {
     virtual bool preserve_deletes() const {
       return compaction_->immutable_cf_options()->preserve_deletes;
     }
+    virtual Logger* Logger() const {
+       return compaction_->immutable_cf_options()->info_log;
+    }
 
    protected:
     CompactionProxy() = default;

@@ -271,6 +271,23 @@ TEST_F(ExternalSSTFileBasicTest, DirectIngest) {
     Status s = DeprecatedAddFile({ssts[i]});
     ASSERT_TRUE(s.ok()) << s.ToString();
   }
+
+  ColumnFamilyMetaData cf_meta;
+  db_->GetColumnFamilyMetaData(&cf_meta);
+
+  std::vector<std::string> input_file_names;
+  for (auto level : cf_meta.levels) {
+    for (auto file : level.files) {
+      input_file_names.push_back(file.name);
+    }
+  }
+  CompactionOptions compact_options;
+  Status s = db_->CompactFiles(
+        compact_options,
+        input_file_names,
+        6);
+  ASSERT_TRUE(s.ok());
+
   for (int t = 0; t < 20; t++) {
     for(int i = 0; i < 100; i++) {
       ASSERT_EQ(Get(Key(i+t*100)), Key(i+t*100));

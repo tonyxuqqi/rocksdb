@@ -172,6 +172,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
     // Hack: pass internal key to BlobIndexCompactionFilter since it needs
     // to get sequence number.
     Slice& filter_key = ikey_.type == kTypeValue ? ikey_.user_key : key_;
+    ROCKS_LOG_INFO(compaction_->Logger(), "InvokeFilterIfNeeded is triggerred");
     SequenceNumber seqno = ikey_.sequence;
     {
       StopWatchNano timer(env_, report_detailed_time_);

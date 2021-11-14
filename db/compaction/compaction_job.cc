@@ -845,6 +845,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
         "anymore.");
     return;
   }
+  if (compaction_filter != nullptr) {
+     ROCKS_LOG_INFO(db_options_.info_log, "CompactionFilter does exist, unexpected!!!!");
+  }
 
   CompactionRangeDelAggregator range_del_agg(&cfd->internal_comparator(),
                                              existing_snapshots_);
