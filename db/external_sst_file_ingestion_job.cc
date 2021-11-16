@@ -395,6 +395,7 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   // Get the external file properties
   auto props = table_reader->GetTableProperties();
   const auto& uprops = props->user_collected_properties;
+  bool internal_sst = false;
 
   // Get table version
   auto version_iter = uprops.find(ExternalSstFilePropertyNames::kVersion);
@@ -410,6 +411,7 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
     if (seqno_iter == uprops.end()) {
           file_to_ingest->original_seqno = 0;
           file_to_ingest->global_seqno_offset = 0;
+          internal_sst = true;
 
     } else {
       // Set the global sequence number
@@ -461,16 +463,32 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
       return Status::Corruption("external file have corrupted keys");
     }
     file_to_ingest->smallest_user_key = key.user_key.ToString();
-    file_to_ingest->smallest_seqno = key.sequence;
 
     iter->SeekToLast();
     if (!ParseInternalKey(iter->key(), &key)) {
       return Status::Corruption("external file have corrupted keys");
     }
     file_to_ingest->largest_user_key = key.user_key.ToString();
-    file_to_ingest->largest_seqno = key.sequence;
 
     bounds_set = true;
+  }
+
+  if (internal_sst) {
+    file_to_ingest->smallest_seqno = kDisableGlobalSequenceNumber;
+    file_to_ingest->largest_seqno = 0;
+    iter->SeekToFirst();
+    while(iter->Valid()) {
+      if (!ParseInternalKey(iter->key(), &key)) {
+        return Status::Corruption("external file have corrupted keys");
+      }
+      if (key.sequence < file_to_ingest->smallest_seqno) {
+        file_to_ingest->smallest_seqno = key.sequence;
+      }
+      if (key.sequence > file_to_ingest->largest_seqno) {
+        file_to_ingest->largest_seqno = key.sequence;
+      }
+      iter->Next();
+    }
   }
 
   // We may need to adjust these key bounds, depending on whether any range
