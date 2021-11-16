@@ -241,8 +241,8 @@ Status ExternalSstFileIngestionJob::Run() {
     status = AssignGlobalSeqnoForIngestedFile(&f, assigned_seqno);
     TEST_SYNC_POINT_CALLBACK("ExternalSstFileIngestionJob::Run",
                              &assigned_seqno);
-    SequenceNumber smallest = f.smallest_seqno;
-    SequenceNumber largest = f.largest_seqno;
+    SequenceNumber smallest_seqno = f.smallest_seqno;
+    SequenceNumber largest_seqno = f.largest_seqno;
     if (internal_sst) {
         if (f.largest_seqno > max_seqno_) {
             max_seqno_ = f.largest_seqno; 
@@ -250,8 +250,8 @@ Status ExternalSstFileIngestionJob::Run() {
         assigned_seqno = 0; // never use global seqno for internal sst;
         f.assigned_seqno = 0;
     } else {
-      smallest = f.assigned_seqno;
-      largest = f.assigned_seqno; 
+      smallest_seqno = f.assigned_seqno;
+      largest_seqno = f.assigned_seqno; 
     }
 
     if (assigned_seqno == last_seqno + 1) {
@@ -263,13 +263,18 @@ Status ExternalSstFileIngestionJob::Run() {
     }
     edit_.AddFile(f.picked_level, f.fd.GetNumber(), f.fd.GetPathId(),
                   f.fd.GetFileSize(), f.smallest_internal_key(),
-                  f.largest_internal_key(), smallest, largest,
+                  f.largest_internal_key(), smallest_seqno, largest_seqno,
                   false);
+    ROCKS_LOG_INFO(
+      db_options_.info_log,
+      "Add file %d,  smallest_seqno %" PRIu64 ", largest_seqno %" PRIu64 " level %d",
+      (int)f.fd.GetNumber(), smallest_seqno, largest_seqno, f.picked_level
+    );
   }
   ROCKS_LOG_INFO(
     db_options_.info_log,
-    "ExternalSstFileIngestionJob::Run edit_ count %d",
-    (int)edit_.NumEntries()
+    "ExternalSstFileIngestionJob::Run edit_ count %d max_seqno_ %" PRIu64,
+    (int)edit_.NumEntries(), max_seqno_
   );
   
   return status;
