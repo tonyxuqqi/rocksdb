@@ -267,8 +267,8 @@ Status ExternalSstFileIngestionJob::Run() {
                   false);
     ROCKS_LOG_INFO(
       db_options_.info_log,
-      "Add file %d,  smallest_seqno %" PRIu64 ", largest_seqno %" PRIu64 " level %d",
-      (int)f.fd.GetNumber(), smallest_seqno, largest_seqno, f.picked_level
+      "Add file. Is internal SST:%d, file number %d,  smallest_seqno %" PRIu64 ", largest_seqno %" PRIu64 " level %d",
+      internal_sst, (int)f.fd.GetNumber(), smallest_seqno, largest_seqno, f.picked_level
     );
   }
   ROCKS_LOG_INFO(
