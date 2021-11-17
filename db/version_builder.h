@@ -29,7 +29,7 @@ class VersionBuilder {
   VersionBuilder(const EnvOptions& env_options, TableCache* table_cache,
                  VersionStorageInfo* base_vstorage, Logger* info_log = nullptr);
   ~VersionBuilder();
-  Status CheckConsistency(VersionStorageInfo* vstorage);
+  Status CheckConsistency(VersionStorageInfo* vstorage, const std::string& caller = "");
   Status CheckConsistencyForDeletes(VersionEdit* edit);
   bool CheckConsistencyForNumLevels();
   Status Apply(VersionEdit* edit);

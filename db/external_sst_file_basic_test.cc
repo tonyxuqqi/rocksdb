@@ -13,6 +13,9 @@
 #include "test_util/testutil.h"
 #include <iostream>
 #include "rocksdb/options.h"
+#include <algorithm>
+#include <random>
+#include <chrono>
 
 namespace rocksdb {
 
@@ -248,19 +251,26 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
 
 TEST_F(ExternalSSTFileBasicTest, DirectIngest) {
   Options options = CurrentOptions();
+  options.force_consistency_checks = true;
 
   DestroyAndReopen(options);
-  std::string ssts[] = {"/Users/qixu/l/rocksdb/sst/000007.sst",
+  std::string ssts[] = {"/Users/qixu/l/rocksdb/sst/000014.sst",
+                        "/Users/qixu/l/rocksdb/sst/000007.sst",
+                        "/Users/qixu/l/rocksdb/sst/000018.sst",
                         "/Users/qixu/l/rocksdb/sst/000010.sst",
                         "/Users/qixu/l/rocksdb/sst/000012.sst",
-                        "/Users/qixu/l/rocksdb/sst/000014.sst",
                         "/Users/qixu/l/rocksdb/sst/000016.sst",
-                        "/Users/qixu/l/rocksdb/sst/000018.sst",
                         "/Users/qixu/l/rocksdb/sst/000020.sst",
                         "/Users/qixu/l/rocksdb/sst/000022.sst",
                         "/Users/qixu/l/rocksdb/sst/000024.sst",      
                         "/Users/qixu/l/rocksdb/sst/000026.sst"};
-  for (int t = 10; t < 20; t++) {
+  std::vector<int> indx;
+  for (int i = 0; i < 10; i++) {
+    indx.push_back(i);
+  }
+  unsigned seed = (unsigned)std::chrono::system_clock::now().time_since_epoch().count();
+  shuffle (indx.begin(), indx.end(), std::default_random_engine(seed));
+  for (int t = 0; t < 20; t++) {
     for(int i = 0; i < 100; i++) {
       db_->Put(rocksdb::WriteOptions(), Key(i+t*100), Key(i+t*100));
     }
@@ -268,7 +278,8 @@ TEST_F(ExternalSSTFileBasicTest, DirectIngest) {
   }
 
   for(int i = 0; i < 10; i++) {
-    Status s = DeprecatedAddFile({ssts[i]});
+    std::cout << "ingesting " << ssts[indx[i]] << std::endl; 
+    Status s = DeprecatedAddFile({ssts[indx[i]]});
     ASSERT_TRUE(s.ok()) << s.ToString();
   }
 
@@ -277,8 +288,10 @@ TEST_F(ExternalSSTFileBasicTest, DirectIngest) {
 
   std::vector<std::string> input_file_names;
   for (auto level : cf_meta.levels) {
+    std::cout << "level " << level.level << std::endl;
     for (auto file : level.files) {
       input_file_names.push_back(file.name);
+      std::cout << file.name << "  smallest seqno:" << file.smallest_seqno << "   largest seqno: " << file.largest_seqno << std::endl;
     }
   }
   CompactionOptions compact_options;

@@ -139,7 +139,7 @@ class VersionBuilder::Rep {
     }
   }
 
-  Status CheckConsistency(VersionStorageInfo* vstorage) {
+  Status CheckConsistency(VersionStorageInfo* vstorage, const std::string& caller = "") {
 #ifdef NDEBUG
     if (!vstorage->force_consistency_checks()) {
       // Dont run consistency checks in release mode except if
@@ -180,7 +180,7 @@ class VersionBuilder::Rep {
                                         " vs. file with global_seqno" +
                                         NumberToString(external_file_seqno) +
                                         " with fileNumber " +
-                                        NumberToString(f1->fd.GetNumber()));
+                                        NumberToString(f1->fd.GetNumber()) + " " + caller);
             }
           } else if (f1->fd.smallest_seqno <= f2->fd.smallest_seqno) {
             fprintf(stderr,
@@ -194,7 +194,7 @@ class VersionBuilder::Rep {
                 NumberToString(f1->fd.GetNumber()) + " vs. " +
                 NumberToString(f2->fd.smallest_seqno) + " " +
                 NumberToString(f2->fd.largest_seqno) + " " +
-                NumberToString(f2->fd.GetNumber()));
+                NumberToString(f2->fd.GetNumber()) + " " + caller);
           }
         } else {
           if (!level_nonzero_cmp_(f1, f2)) {
@@ -303,7 +303,7 @@ class VersionBuilder::Rep {
 
   // Apply all of the edits in *edit to the current state.
   Status Apply(VersionEdit* edit) {
-    Status s = CheckConsistency(base_vstorage_);
+    Status s = CheckConsistency(base_vstorage_, "Apply");
     if (!s.ok()) {
       return s;
     }
@@ -361,12 +361,12 @@ class VersionBuilder::Rep {
 
   // Save the current state in *v.
   Status SaveTo(VersionStorageInfo* vstorage) {
-    Status s = CheckConsistency(base_vstorage_);
+    Status s = CheckConsistency(base_vstorage_, "SaveTo1");
     if (!s.ok()) {
       return s;
     }
 
-    s = CheckConsistency(vstorage);
+    s = CheckConsistency(vstorage, "SaveTo2");
     if (!s.ok()) {
       return s;
     }
@@ -413,7 +413,7 @@ class VersionBuilder::Rep {
       }
     }
 
-    s = CheckConsistency(vstorage);
+    s = CheckConsistency(vstorage, "SaveTo3");
     return s;
   }
 
@@ -532,8 +532,8 @@ VersionBuilder::VersionBuilder(const EnvOptions& env_options,
 
 VersionBuilder::~VersionBuilder() { delete rep_; }
 
-Status VersionBuilder::CheckConsistency(VersionStorageInfo* vstorage) {
-  return rep_->CheckConsistency(vstorage);
+Status VersionBuilder::CheckConsistency(VersionStorageInfo* vstorage, const std::string& caller) {
+  return rep_->CheckConsistency(vstorage, caller);
 }
 
 Status VersionBuilder::CheckConsistencyForDeletes(VersionEdit* edit) {
