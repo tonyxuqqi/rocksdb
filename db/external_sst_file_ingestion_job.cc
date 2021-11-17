@@ -477,6 +477,9 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
     file_to_ingest->smallest_seqno = kDisableGlobalSequenceNumber;
     file_to_ingest->largest_seqno = 0;
     iter->SeekToFirst();
+    if (!iter->Valid()) {
+      file_to_ingest->smallest_seqno = 0;     
+    }
     while(iter->Valid()) {
       if (!ParseInternalKey(iter->key(), &key)) {
         return Status::Corruption("external file have corrupted keys");
