@@ -815,6 +815,11 @@ class DBTestBase : public testing::Test {
 
   Status TryReopen(const Options& options);
 
+  Status TryReopen(const Options& options, const std::string& db_path, 
+                   const std::vector<ColumnFamilyDescriptor>& cfds,
+                   std::vector<ColumnFamilyHandle*>* handles, 
+                   DB** db);
+
   bool IsDirectIOSupported();
 
   bool IsMemoryMappedAccessSupported() const;

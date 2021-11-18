@@ -688,6 +688,12 @@ Status DBTestBase::TryReopen(const Options& options) {
   return DB::Open(options, dbname_, &db_);
 }
 
+Status DBTestBase::TryReopen(const Options& options, const std::string& db_path,  
+  const std::vector<ColumnFamilyDescriptor>& cfds,
+  std::vector<ColumnFamilyHandle*>* handles, DB** db) {
+   return DB::Open(options, db_path, cfds, handles, db); 
+}
+
 bool DBTestBase::IsDirectIOSupported() {
   return test::IsDirectIOSupported(env_, dbname_);
 }

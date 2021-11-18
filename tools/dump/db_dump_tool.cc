@@ -34,12 +34,12 @@ bool DbDumpTool::Run(const DumpOptions& dump_options,
   // Open the database
   options.create_if_missing = false;
  
+  std::vector<std::string> cfs;
+  DB::ListColumnFamilies(DBOptions(), dump_options.db_path, &cfs);
   std::vector<ColumnFamilyDescriptor> cfds;
   std::vector<ColumnFamilyHandle*> handles;
-  cfds.push_back(ColumnFamilyDescriptor());
-  std::string names[3] = {"write", "lock", "raft"};
-  for(size_t i = 0; i < 3; i++) {
-     cfds.push_back(ColumnFamilyDescriptor(names[i], ColumnFamilyOptions()));
+  for(size_t i = 0; i < cfs.size(); i++) {
+     cfds.push_back(ColumnFamilyDescriptor(cfs[i], ColumnFamilyOptions()));
   }
   status = rocksdb::DB::OpenForReadOnly(options, dump_options.db_path, cfds, &handles, &dbptr, false);
   if (!status.ok()) {
@@ -99,15 +99,17 @@ bool DbDumpTool::Run(const DumpOptions& dump_options,
     return false;
   }
 
-  std::vector<std::string> cfs;
-  DB::ListColumnFamilies(DBOptions(), dump_options.db_path, &cfs);
-    std::vector<std::string> livefiles;
+  std::vector<std::string> livefiles;
   uint64_t manifest_file_size;
   db->GetLiveFiles(livefiles, &manifest_file_size, false);
   for (size_t i = 0; i < livefiles.size(); i++) {
       std::cout << "file " << livefiles[i] << std::endl;
   }
   for(size_t i = 0; i < cfs.size(); i++) {
+      if (cfs[i] == "raft") {
+          delete handles[i];
+          continue;
+      }
       ColumnFamilyHandle* cf = handles[i];
       std::cout << "dumping cf " << cfs[i] << std::endl;
       ColumnFamilyMetaData meta;
@@ -120,9 +122,11 @@ bool DbDumpTool::Run(const DumpOptions& dump_options,
              std::cout << "sst name:" << levels[l].files[j].name << "  size " << levels[l].files[j].size << std::endl;
           }
       }
+      uint64_t key_count = 0;
   const std::unique_ptr<rocksdb::Iterator> it(
       db->NewIterator(rocksdb::ReadOptions(), handles[i]));
 	  for (it->SeekToFirst(); it->Valid(); it->Next()) {
+      key_count++;
 	    char keysize[4];
 	    rocksdb::EncodeFixed32(keysize, (uint32_t)it->key().size());
 	    rocksdb::Slice keysizeslice(keysize, 4);
@@ -156,7 +160,8 @@ bool DbDumpTool::Run(const DumpOptions& dump_options,
 		      << std::endl;
 	    return false;
 	  }
-	  delete cf;
+    delete handles[i];
+	  std::cout << cfs[i] << " key count " << key_count << std::endl;
   }
   return true;
 }

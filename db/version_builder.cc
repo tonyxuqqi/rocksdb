@@ -182,7 +182,7 @@ class VersionBuilder::Rep {
                                         " with fileNumber " +
                                         NumberToString(f1->fd.GetNumber()) + " " + caller);
             }
-          } else if (f1->fd.smallest_seqno <= f2->fd.smallest_seqno) {
+          } else if (f1->fd.smallest_seqno < f2->fd.smallest_seqno && f1->fd.largest_seqno <= f2->fd.largest_seqno) {
             fprintf(stderr,
                     "L0 files seqno %" PRIu64 " %" PRIu64 " vs. %" PRIu64
                     " %" PRIu64 "\n",
