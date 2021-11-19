@@ -164,7 +164,7 @@ class ExternalSSTFileBasicTest
     for (size_t i = 0; i < src_handles->size(); i++) { 
       ColumnFamilyMetaData cf_meta;
       src_db->GetColumnFamilyMetaData((*src_handles)[i], &cf_meta);
-      for (int idx = cf_meta.levels.size() -1; idx >= 0; idx--) {
+      for (int idx = (int)cf_meta.levels.size() -1; idx >= 0; idx--) {
         LevelMetaData& level = cf_meta.levels[idx];
         std::vector<std::string> input_file_names;
         for (auto file : level.files) {
@@ -207,8 +207,8 @@ class ExternalSSTFileBasicTest
   int GetKeyCount(DB* db,  ColumnFamilyHandle* handle, const std::string& start, const std::string& end, bool print = false) {
       std::string start_key = std::string(1, 'z') + start;
       std::string end_key = end.empty() ? std::string(1, 'z' + 1) :  std::string(1, 'z') + end; 
-      uint64_t key_count = 0;
-      uint64_t outofrange_key_count = 0;
+      int key_count = 0;
+      int outofrange_key_count = 0;
       ReadOptions opt;
       const std::unique_ptr<rocksdb::Iterator> it(
           db->NewIterator(opt, handle));

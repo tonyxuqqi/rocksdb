@@ -99,6 +99,7 @@ class ExternalSstFileIngestionJob {
 
   // Prepare the job by copying external files into the DB.
   Status Prepare(const std::vector<std::string>& external_files_paths,
+                 const std::vector<std::pair<uint64_t, uint64_t> >& seqnos,
                  uint64_t next_file_number, SuperVersion* sv);
 
   // Check if we need to flush the memtable before running the ingestion job
@@ -136,6 +137,8 @@ class ExternalSstFileIngestionJob {
   // Open the external file and populate `file_to_ingest` with all the
   // external information we need to ingest this file.
   Status GetIngestedFileInfo(const std::string& external_file,
+                             const uint64_t* smallest_seq,
+                             const uint64_t* largest_seq,
                              IngestedFileInfo* file_to_ingest,
                              SuperVersion* sv);
 

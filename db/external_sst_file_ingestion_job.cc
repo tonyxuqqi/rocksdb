@@ -28,14 +28,26 @@ namespace rocksdb {
 
 Status ExternalSstFileIngestionJob::Prepare(
     const std::vector<std::string>& external_files_paths,
+    const std::vector<std::pair<uint64_t, uint64_t> >& seqnos,
     uint64_t next_file_number, SuperVersion* sv) {
   Status status;
-
+  if (!seqnos.empty() && seqnos.size() != external_files_paths.size()) {
+    return Status::InvalidArgument(
+      "The vector 'seqnos' is not empty but is not same size with 'external_files_paths'"); 
+  }
   ROCKS_LOG_INFO(db_options_.info_log, "Prepare ingesting started. File count %d", (int)external_files_paths.size());
+  size_t seqno_idx = 0;
   // Read the information of files we are ingesting
   for (const std::string& file_path : external_files_paths) {
     IngestedFileInfo file_to_ingest;
-    status = GetIngestedFileInfo(file_path, &file_to_ingest, sv);
+    const uint64_t* smallest_seqno = NULL;
+    const uint64_t* largest_seqno = NULL;
+    if (!seqnos.empty()) {
+       smallest_seqno = &seqnos[seqno_idx].first;
+       largest_seqno = &seqnos[seqno_idx].second;
+       seqno_idx++;
+    }
+    status = GetIngestedFileInfo(file_path, smallest_seqno, largest_seqno, &file_to_ingest, sv);
     ROCKS_LOG_INFO(db_options_.info_log, "Prepare ingesting %s IsOk: %d", file_path.c_str(), status.ok());
     if (!status.ok()) {
       return status;
@@ -353,7 +365,10 @@ void ExternalSstFileIngestionJob::Cleanup(const Status& status) {
 }
 
 Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
-    const std::string& external_file, IngestedFileInfo* file_to_ingest,
+    const std::string& external_file, 
+    const uint64_t* smallest_seqno,
+    const uint64_t* largest_seqno,
+    IngestedFileInfo* file_to_ingest,
     SuperVersion* sv) {
   file_to_ingest->external_file_path = external_file;
 
@@ -474,23 +489,28 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   }
 
   if (internal_sst) {
-    file_to_ingest->smallest_seqno = kDisableGlobalSequenceNumber;
-    file_to_ingest->largest_seqno = 0;
-    iter->SeekToFirst();
-    if (!iter->Valid()) {
-      file_to_ingest->smallest_seqno = 0;     
-    }
-    while(iter->Valid()) {
-      if (!ParseInternalKey(iter->key(), &key)) {
-        return Status::Corruption("external file have corrupted keys");
+    if (smallest_seqno && largest_seqno) {
+      file_to_ingest->smallest_seqno = *smallest_seqno;
+      file_to_ingest->largest_seqno = *largest_seqno;
+    } else {
+      file_to_ingest->smallest_seqno = kDisableGlobalSequenceNumber;
+      file_to_ingest->largest_seqno = 0;
+      iter->SeekToFirst();
+      if (!iter->Valid()) {
+        file_to_ingest->smallest_seqno = 0;     
       }
-      if (key.sequence < file_to_ingest->smallest_seqno) {
-        file_to_ingest->smallest_seqno = key.sequence;
+      while(iter->Valid()) {
+        if (!ParseInternalKey(iter->key(), &key)) {
+          return Status::Corruption("external file have corrupted keys");
+        }
+        if (key.sequence < file_to_ingest->smallest_seqno) {
+          file_to_ingest->smallest_seqno = key.sequence;
+        }
+        if (key.sequence > file_to_ingest->largest_seqno) {
+          file_to_ingest->largest_seqno = key.sequence;
+        }
+        iter->Next();
       }
-      if (key.sequence > file_to_ingest->largest_seqno) {
-        file_to_ingest->largest_seqno = key.sequence;
-      }
-      iter->Next();
     }
   }
 

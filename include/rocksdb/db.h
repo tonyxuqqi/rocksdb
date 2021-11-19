@@ -114,6 +114,7 @@ struct IngestExternalFileArg {
   ColumnFamilyHandle* column_family = nullptr;
   std::vector<std::string> external_files;
   IngestExternalFileOptions options;
+  std::vector<std::pair<uint64_t, uint64_t> > seqnos;
 };
 
 // A collections of table properties objects, where
