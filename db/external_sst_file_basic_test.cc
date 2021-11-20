@@ -61,6 +61,25 @@ class ExternalSSTFileBasicTest
     return db->IngestExternalFile(handle, files, opts);
   }
 
+   Status IngestExternalFileWithSeqno(DB* db, ColumnFamilyHandle* handle, const std::vector<std::string>& files,
+                                      const std::vector<std::pair<uint64_t, uint64_t> >& seqnos,
+                                      bool move_files = false,
+                                      bool skip_snapshot_check = false) {
+    (void)skip_snapshot_check;
+    IngestExternalFileOptions opts;
+    opts.move_files = move_files;
+    opts.snapshot_consistency = !skip_snapshot_check;
+    opts.allow_global_seqno = true;
+    opts.allow_blocking_flush = false;
+    opts.write_global_seqno = false;
+    IngestExternalFileArg args;
+    args.external_files = files;
+    args.column_family = handle;
+    args.options = opts;
+    args.seqnos = seqnos; 
+    return db->IngestExternalFiles({args});
+  }
+
   Status GenerateAndAddExternalFile(
       const Options options, std::vector<int> keys,
       const std::vector<ValueType>& value_types,
@@ -167,6 +186,12 @@ class ExternalSSTFileBasicTest
       for (int idx = (int)cf_meta.levels.size() -1; idx >= 0; idx--) {
         LevelMetaData& level = cf_meta.levels[idx];
         std::vector<std::string> input_file_names;
+        std::vector<std::pair<uint64_t, uint64_t> > seqnos;
+        std::vector<rocksdb::SstFileMetaData> files = level.files;
+        std::sort(files.begin(), files.end(), 
+        [](const rocksdb::SstFileMetaData& file1, const rocksdb::SstFileMetaData& file2) -> bool {
+            return file1.smallest_seqno < file2.smallest_seqno;
+        });
         for (auto file : level.files) {
           if (print) {
             std::cout << cfs[i] << " level " << level.level << " " << file.name << std::endl;
@@ -176,12 +201,13 @@ class ExternalSSTFileBasicTest
           }
           if (level.level != 0) {
             input_file_names.push_back(src_db_path + file.name);
+            seqnos.emplace_back(std::pair<uint64_t, uint64_t>(file.smallest_seqno, file.largest_seqno));
           } else {
             (void)target_db;
-            Status s = DeprecatedAddFile(target_db, (*target_handles)[i], {src_db_path + file.name});
+            Status s = IngestExternalFileWithSeqno(target_db, (*target_handles)[i], {src_db_path + file.name}, {std::pair<uint64_t, uint64_t>(file.smallest_seqno, file.largest_seqno)});
             if (!s.ok()) {
                target_db->Flush(FlushOptions(), (*target_handles)[i]);
-               s = DeprecatedAddFile(target_db, (*target_handles)[i], {src_db_path + file.name});
+               s = IngestExternalFileWithSeqno(target_db, (*target_handles)[i], {src_db_path + file.name}, {std::pair<uint64_t, uint64_t>(file.smallest_seqno, file.largest_seqno)});
             }
             ASSERT_TRUE(s.ok());
             if (!s.ok()) {
@@ -190,10 +216,10 @@ class ExternalSSTFileBasicTest
           }
         }
         if (input_file_names.size() != 0) {
-          Status s = DeprecatedAddFile(target_db, (*target_handles)[i], input_file_names);
+          Status s = IngestExternalFileWithSeqno(target_db, (*target_handles)[i], input_file_names, seqnos);
           if (!s.ok()) {
               target_db->Flush(FlushOptions(), (*target_handles)[i]);
-              s = DeprecatedAddFile(target_db, (*target_handles)[i], input_file_names);
+              s = IngestExternalFileWithSeqno(target_db, (*target_handles)[i], input_file_names, seqnos);
           }
           ASSERT_TRUE(s.ok());
           if (!s.ok()) {
