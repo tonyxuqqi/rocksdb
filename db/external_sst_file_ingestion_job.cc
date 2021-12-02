@@ -48,7 +48,8 @@ Status ExternalSstFileIngestionJob::Prepare(
        seqno_idx++;
     }
     status = GetIngestedFileInfo(file_path, smallest_seqno, largest_seqno, &file_to_ingest, sv);
-    ROCKS_LOG_INFO(db_options_.info_log, "Prepare ingesting %s IsOk: %d", file_path.c_str(), status.ok());
+    ROCKS_LOG_INFO(db_options_.info_log, "Prepare ingesting %s IsOk: %d. smallest_seqno %" PRIu64 ", largest_seqno %" PRIu64 "", 
+      file_path.c_str(), status.ok(), smallest_seqno ? *smallest_seqno : 0, largest_seqno ? *largest_seqno : 0);
     if (!status.ok()) {
       return status;
     }
@@ -389,11 +390,14 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   }
   sst_file_reader.reset(new RandomAccessFileReader(std::move(sst_file),
                                                    external_file));
-
-  status = cfd_->ioptions()->table_factory->NewTableReader(
-      TableReaderOptions(*cfd_->ioptions(),
+  TableReaderOptions readerOpt(*cfd_->ioptions(),
                          sv->mutable_cf_options.prefix_extractor.get(),
-                         env_options_, cfd_->internal_comparator()),
+                         env_options_, cfd_->internal_comparator());
+  if (largest_seqno != NULL) {
+      readerOpt.largest_seqno = *largest_seqno; 
+  }
+  status = cfd_->ioptions()->table_factory->NewTableReader(
+      readerOpt,
       std::move(sst_file_reader), file_to_ingest->file_size, &table_reader);
   if (!status.ok()) {
     return status;
