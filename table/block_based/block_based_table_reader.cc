@@ -1016,7 +1016,8 @@ bool IsFeatureSupported(const TableProperties& table_properties,
 // Caller has to ensure seqno is not nullptr.
 Status GetGlobalSequenceNumber(const TableProperties& table_properties,
                                SequenceNumber largest_seqno,
-                               SequenceNumber* seqno) {
+                               SequenceNumber* seqno,
+                               const std::string& file_name) {
   const auto& props = table_properties.user_collected_properties;
   const auto version_pos = props.find(ExternalSstFilePropertyNames::kVersion);
   const auto seqno_pos = props.find(ExternalSstFilePropertyNames::kGlobalSeqno);
@@ -1028,8 +1029,8 @@ Status GetGlobalSequenceNumber(const TableProperties& table_properties,
       // This is not an external sst file, global_seqno is not supported.
       snprintf(
           msg_buf.data(), msg_buf.max_size(),
-          "A non-external sst file have global seqno property with value %s",
-          seqno_pos->second.c_str());
+          "File:%s A non-external sst file have global seqno property with value %s",
+          file_name.c_str(), seqno_pos->second.c_str());
       return Status::Corruption(msg_buf.data());
     }
     return Status::OK();
@@ -1041,9 +1042,9 @@ Status GetGlobalSequenceNumber(const TableProperties& table_properties,
       std::array<char, 200> msg_buf;
       // This is a v1 external sst file, global_seqno is not supported.
       snprintf(msg_buf.data(), msg_buf.max_size(),
-               "An external sst file with version %u have global seqno "
+               "File:%s, An external sst file with version %u have global seqno "
                "property with value %s",
-               version, seqno_pos->second.c_str());
+               file_name.c_str(), version, seqno_pos->second.c_str());
       return Status::Corruption(msg_buf.data());
     }
     return Status::OK();
@@ -1066,9 +1067,9 @@ Status GetGlobalSequenceNumber(const TableProperties& table_properties,
       std::array<char, 200> msg_buf;
       snprintf(
           msg_buf.data(), msg_buf.max_size(),
-          "An external sst file with version %u have global seqno property "
+          "File:%s, An external sst file with version %u have global seqno property "
           "with value %s, while largest seqno in the file is %llu",
-          version, seqno_pos->second.c_str(),
+          file_name.c_str(), version, seqno_pos->second.c_str(),
           static_cast<unsigned long long>(largest_seqno));
       return Status::Corruption(msg_buf.data());
     }
@@ -1078,9 +1079,9 @@ Status GetGlobalSequenceNumber(const TableProperties& table_properties,
   if (global_seqno > kMaxSequenceNumber) {
     std::array<char, 200> msg_buf;
     snprintf(msg_buf.data(), msg_buf.max_size(),
-             "An external sst file with version %u have global seqno property "
+             "File:%s, An external sst file with version %u have global seqno property "
              "with value %llu, which is greater than kMaxSequenceNumber",
-             version, static_cast<unsigned long long>(global_seqno));
+             file_name.c_str(), version, static_cast<unsigned long long>(global_seqno));
     return Status::Corruption(msg_buf.data());
   }
 
@@ -1406,10 +1407,11 @@ Status BlockBasedTable::ReadPropertiesBlock(
     rep_->index_has_first_key =
         rep_->index_type == BlockBasedTableOptions::kBinarySearchWithFirstKey;
 
+    std::string file_name = rep_->file->file_name();
     s = GetGlobalSequenceNumber(*(rep_->table_properties), largest_seqno,
-                                &(rep_->global_seqno));
+                                &(rep_->global_seqno), file_name);
     if (!s.ok()) {
-      ROCKS_LOG_ERROR(rep_->ioptions.info_log, "%s", s.ToString().c_str());
+      ROCKS_LOG_ERROR(rep_->ioptions.info_log, "file %s error %s", file_name.c_str(), s.ToString().c_str());
     }
   }
   return s;
