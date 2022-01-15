@@ -17,6 +17,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <pthread.h>
 
 #include "db/builder.h"
 #include "db/compaction/compaction_job.h"
@@ -584,9 +585,16 @@ Status CompactionJob::Run() {
   // Launch a thread for each of subcompactions 1...num_threads-1
   std::vector<port::Thread> thread_pool;
   thread_pool.reserve(num_threads - 1);
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(1, &cpuset);
+  CPU_SET(2, &cpuset);
+   
   for (size_t i = 1; i < compact_->sub_compact_states.size(); i++) {
     thread_pool.emplace_back(&CompactionJob::ProcessKeyValueCompaction, this,
                              &compact_->sub_compact_states[i]);
+    pthread_setaffinity_np(thread_pool[i-1].native_handle(),
+                                    sizeof(cpu_set_t), &cpuset);
   }
 
   // Always schedule the first subcompaction (whether or not there are also

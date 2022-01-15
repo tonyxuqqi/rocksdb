@@ -30,6 +30,7 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+#include <pthread.h>
 
 namespace rocksdb {
 
@@ -333,10 +334,16 @@ int ThreadPoolImpl::Impl::GetBackgroundThreads() {
 
 void ThreadPoolImpl::Impl::StartBGThreads() {
   // Start background thread if necessary
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(1, &cpuset);
+  CPU_SET(2, &cpuset);
   while ((int)bgthreads_.size() < total_threads_limit_) {
 
     port::Thread p_t(&BGThreadWrapper,
       new BGThreadMetadata(this, bgthreads_.size()));
+    pthread_setaffinity_np(p_t.native_handle(),
+                                    sizeof(cpu_set_t), &cpuset);
 
 // Set the thread name to aid debugging
 #if defined(_GNU_SOURCE) && defined(__GLIBC_PREREQ)
