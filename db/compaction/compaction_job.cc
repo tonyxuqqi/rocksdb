@@ -588,7 +588,6 @@ Status CompactionJob::Run() {
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(1, &cpuset);
-  CPU_SET(2, &cpuset);
    
   for (size_t i = 1; i < compact_->sub_compact_states.size(); i++) {
     thread_pool.emplace_back(&CompactionJob::ProcessKeyValueCompaction, this,

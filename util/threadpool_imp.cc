@@ -337,7 +337,6 @@ void ThreadPoolImpl::Impl::StartBGThreads() {
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(1, &cpuset);
-  CPU_SET(2, &cpuset);
   while ((int)bgthreads_.size() < total_threads_limit_) {
 
     port::Thread p_t(&BGThreadWrapper,
