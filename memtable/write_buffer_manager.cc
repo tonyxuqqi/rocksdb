@@ -12,18 +12,21 @@
 #include "cache/cache_entry_roles.h"
 #include "cache/cache_reservation_manager.h"
 #include "db/db_impl/db_impl.h"
+#include "rocksdb/options.h"
 #include "rocksdb/status.h"
 #include "util/coding.h"
 
 namespace ROCKSDB_NAMESPACE {
-WriteBufferManager::WriteBufferManager(size_t _buffer_size,
+WriteBufferManager::WriteBufferManager(size_t _flush_size,
                                        std::shared_ptr<Cache> cache,
-                                       bool allow_stall)
-    : memory_used_(0),
-      buffer_size_(_buffer_size),
-      mutable_limit_(buffer_size_ * 7 / 8),
-      memory_active_(0),
-      allow_stall_(allow_stall),
+                                       float stall_ratio,
+                                       bool flush_oldest_first)
+    : head_(nullptr),
+      memory_used_(0),
+      flush_size_(_flush_size),
+      flush_oldest_first_(flush_oldest_first),
+      allow_stall_(stall_ratio >= 1.0),
+      stall_ratio_(stall_ratio),
       stall_active_(false),
       cache_res_mgr_(nullptr) {
 #ifndef ROCKSDB_LITE
@@ -41,7 +44,7 @@ WriteBufferManager::WriteBufferManager(size_t _buffer_size,
 
 WriteBufferManager::~WriteBufferManager() {
 #ifndef NDEBUG
-  std::unique_lock<std::mutex> lock(mu_);
+  std::unique_lock<std::mutex> lock(stall_mu_);
   assert(queue_.empty());
 #endif
 }
@@ -55,14 +58,11 @@ std::size_t WriteBufferManager::dummy_entries_in_cache_usage() const {
 }
 
 void WriteBufferManager::ReserveMem(size_t mem) {
-  size_t local_size = buffer_size();
+  size_t local_size = flush_size();
   if (cache_res_mgr_ != nullptr) {
     ReserveMemWithCache(mem);
   } else if (local_size > 0) {
     memory_used_.fetch_add(mem, std::memory_order_relaxed);
-  }
-  if (local_size > 0) {
-    memory_active_.fetch_add(mem, std::memory_order_relaxed);
   }
 }
 
@@ -91,16 +91,10 @@ void WriteBufferManager::ReserveMemWithCache(size_t mem) {
 #endif  // ROCKSDB_LITE
 }
 
-void WriteBufferManager::ScheduleFreeMem(size_t mem) {
-  if (buffer_size() > 0) {
-    memory_active_.fetch_sub(mem, std::memory_order_relaxed);
-  }
-}
-
 void WriteBufferManager::FreeMem(size_t mem) {
   if (cache_res_mgr_ != nullptr) {
     FreeMemWithCache(mem);
-  } else if (buffer_size() > 0) {
+  } else if (flush_size() > 0) {
     memory_used_.fetch_sub(mem, std::memory_order_relaxed);
   }
   // Check if stall is active and can be ended.
@@ -128,6 +122,70 @@ void WriteBufferManager::FreeMemWithCache(size_t mem) {
   (void)mem;
 #endif  // ROCKSDB_LITE
 }
+void WriteBufferManager::MaybeFlushLocked() {
+  // If size trigger is reached, flush `kNumberFlushes` column families with
+  // the highest score.
+  constexpr size_t kNumberFlushes = 2;
+
+  size_t local_size = flush_size();
+  if (local_size == 0 || memory_usage() < local_size) {
+    return;
+  }
+  WriteBufferSentinel* current = head_.get();
+  std::pair<WriteBufferSentinel*, size_t> candidates[kNumberFlushes];
+  size_t n_candidates = 0;
+  size_t total_active_mem = 0;
+  while (current != nullptr) {
+    uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
+    uint64_t current_stats = std::numeric_limits<uint64_t>::max();
+    current->db->GetApproximateActiveMemTableStats(
+        current->cf, &current_memory_bytes, &current_stats);
+    if (n_candidates < kNumberFlushes) {
+      candidates[n_candidates] = std::make_pair(current, current_stats);
+      n_candidates += 1;
+    } else {
+      if (!flush_oldest_first_) {
+        current_stats = current_memory_bytes;
+      }
+      for (auto& c : candidates) {
+        if (c.second < current_stats) {
+          c.first = current;
+          c.second = current_stats;
+          break;
+        }
+      }
+    }
+    total_active_mem += current_memory_bytes;
+    current = current->next.get();
+  }
+
+  if (total_active_mem >= local_size) {
+    FlushOptions flush_opts;
+    flush_opts.allow_write_stall = true;
+    flush_opts.wait = false;
+    for (auto& c : candidates) {
+      flush_opts.min_size_to_flush = c.second;
+      c.first->db->Flush(flush_opts, c.first->cf);
+    }
+  }
+}
+
+bool WriteBufferManager::TEST_ShouldFlush() {
+  size_t local_size = flush_size();
+  if (local_size == 0 || memory_usage() < local_size) {
+    return false;
+  }
+  WriteBufferSentinel* current = head_.get();
+  size_t total_active_mem = 0;
+  while (current != nullptr) {
+    uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
+    current->db->GetApproximateActiveMemTableStats(
+        current->cf, &current_memory_bytes, nullptr);
+    total_active_mem += current_memory_bytes;
+    current = current->next.get();
+  }
+  return total_active_mem >= local_size;
+}
 
 void WriteBufferManager::BeginWriteStall(StallInterface* wbm_stall) {
   assert(wbm_stall != nullptr);
@@ -137,7 +195,7 @@ void WriteBufferManager::BeginWriteStall(StallInterface* wbm_stall) {
   std::list<StallInterface*> new_node = {wbm_stall};
 
   {
-    std::unique_lock<std::mutex> lock(mu_);
+    std::unique_lock<std::mutex> lock(stall_mu_);
     // Verify if the stall conditions are stil active.
     if (ShouldStall()) {
       stall_active_.store(true, std::memory_order_relaxed);
@@ -167,7 +225,7 @@ void WriteBufferManager::MaybeEndWriteStall() {
   // Perform all deallocations outside of the lock.
   std::list<StallInterface*> cleanup;
 
-  std::unique_lock<std::mutex> lock(mu_);
+  std::unique_lock<std::mutex> lock(stall_mu_);
   if (!stall_active_.load(std::memory_order_relaxed)) {
     return;  // Nothing to do.
   }
@@ -182,14 +240,14 @@ void WriteBufferManager::MaybeEndWriteStall() {
   cleanup = std::move(queue_);
 }
 
-void WriteBufferManager::RemoveDBFromQueue(StallInterface* wbm_stall) {
+void WriteBufferManager::RemoveDBFromStallQueue(StallInterface* wbm_stall) {
   assert(wbm_stall != nullptr);
 
   // Deallocate the removed nodes outside of the lock.
   std::list<StallInterface*> cleanup;
 
   if (allow_stall_) {
-    std::unique_lock<std::mutex> lock(mu_);
+    std::unique_lock<std::mutex> lock(stall_mu_);
     for (auto it = queue_.begin(); it != queue_.end();) {
       auto next = std::next(it);
       if (*it == wbm_stall) {

@@ -32,12 +32,11 @@ void AllocTracker::Allocate(size_t bytes) {
 
 void AllocTracker::DoneAllocating() {
   if (write_buffer_manager_ != nullptr && !done_allocating_) {
-    if (write_buffer_manager_->enabled()) {
-      write_buffer_manager_->ScheduleFreeMem(
-          bytes_allocated_.load(std::memory_order_relaxed));
-    } else {
-      assert(bytes_allocated_.load(std::memory_order_relaxed) == 0);
-    }
+    // if (write_buffer_manager_->enabled()) {
+    //   write_buffer_manager_->ScheduleFreeMem(
+    //       bytes_allocated_.load(std::memory_order_relaxed));
+    // }
+    assert(bytes_allocated_.load(std::memory_order_relaxed) == 0);
     done_allocating_ = true;
   }
 }

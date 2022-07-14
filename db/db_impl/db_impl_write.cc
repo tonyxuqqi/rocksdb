@@ -1257,15 +1257,7 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
     status = SwitchWAL(write_context);
   }
 
-  if (UNLIKELY(status.ok() && write_buffer_manager_->ShouldFlush())) {
-    // Before a new memtable is added in SwitchMemtable(),
-    // write_buffer_manager_->ShouldFlush() will keep returning true. If another
-    // thread is writing to another DB with the same write buffer, they may also
-    // be flushed. We may end up with flushing much more DBs than needed. It's
-    // suboptimal but still correct.
-    WaitForPendingWrites();
-    status = HandleWriteBufferManagerFlush(write_context);
-  }
+  write_buffer_manager_->MaybeFlush();
 
   if (UNLIKELY(status.ok() && !trim_history_scheduler_.Empty())) {
     status = TrimMemtableHistory(write_context);
@@ -1757,7 +1749,7 @@ Status DBImpl::HandleWriteBufferManagerFlush(WriteContext* write_context) {
       "Flushing column family with oldest memtable entry. Write buffers are "
       "using %" ROCKSDB_PRIszt " bytes out of a total of %" ROCKSDB_PRIszt ".",
       write_buffer_manager_->memory_usage(),
-      write_buffer_manager_->buffer_size());
+      write_buffer_manager_->flush_size());
   // no need to refcount because drop is happening in write thread, so can't
   // happen while we're in the write thread
   autovector<ColumnFamilyData*> cfds;
@@ -2324,7 +2316,7 @@ size_t DBImpl::GetWalPreallocateBlockSize(uint64_t write_buffer_size) const {
   }
   if (immutable_db_options_.write_buffer_manager) {
     size_t buffer_size =
-        immutable_db_options_.write_buffer_manager->buffer_size();
+        immutable_db_options_.write_buffer_manager->flush_size();
     if (buffer_size > 0) {
       bsize = std::min<size_t>(bsize, buffer_size);
     }

@@ -1912,6 +1912,11 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
   }
   if (s.ok()) {
     impl->StartPeriodicWorkScheduler();
+    if (impl->write_buffer_manager_) {
+      for (auto* h : *handles) {
+        impl->write_buffer_manager_->RegisterColumnFamily(impl, h);
+      }
+    }
   } else {
     for (auto* h : *handles) {
       delete h;

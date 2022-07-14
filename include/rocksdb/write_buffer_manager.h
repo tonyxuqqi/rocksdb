@@ -22,6 +22,8 @@
 
 namespace ROCKSDB_NAMESPACE {
 class CacheReservationManager;
+class DB;
+class ColumnFamilyHandle;
 
 // Interface to block and signal DB instances, intended for RocksDB
 // internal use only. Each DB instance contains ptr to StallInterface.
@@ -37,19 +39,26 @@ class StallInterface {
 class WriteBufferManager final {
  public:
   // Parameters:
-  // _buffer_size: _buffer_size = 0 indicates no limit. Memory won't be capped.
-  // memory_usage() won't be valid and ShouldFlush() will always return true.
+  // flush_size: When the total size of mutable memtables exceeds this limit,
+  // the largest one will be frozen and scheduled for flush. Disabled when 0.
+  // Immutable memtables are excluded for this reason: RocksDB always schedule
+  // a flush for newly created immutable memtable. We can consider them evicted
+  // from memory if flush bandwidth is sufficient.
   //
-  // cache_: if `cache` is provided, we'll put dummy entries in the cache and
-  // cost the memory allocated to the cache. It can be used even if _buffer_size
-  // = 0.
+  // stall_ratio: When the total size of memtables exceeds ratio*flush_size,
+  // user writes will be delayed. Disabled when smaller than 1.
   //
-  // allow_stall: if set true, it will enable stalling of writes when
-  // memory_usage() exceeds buffer_size. It will wait for flush to complete and
-  // memory usage to drop down.
-  explicit WriteBufferManager(size_t _buffer_size,
+  // flush_oldest_first: By default we freeze the largest mutable memtable when
+  // `flush_size` is triggered. By enabling this flag, the oldest mutable
+  // memtable will be frozen instead.
+  //
+  // cache: if `cache` is provided, memtable memory will be charged as a dummy
+  // entry This is useful to keep the memory sum of both memtable and block
+  // cache under control.
+  explicit WriteBufferManager(size_t flush_size,
                               std::shared_ptr<Cache> cache = {},
-                              bool allow_stall = false);
+                              float stall_ratio = 0.0,
+                              bool flush_oldest_first = false);
   // No copying allowed
   WriteBufferManager(const WriteBufferManager&) = delete;
   WriteBufferManager& operator=(const WriteBufferManager&) = delete;
@@ -58,9 +67,7 @@ class WriteBufferManager final {
 
   // Returns true if a non-zero buffer_limit is passed to limit the total
   // memory usage or cache is provided to charge write buffer memory.
-  bool enabled() const {
-    return buffer_size() > 0 || cache_res_mgr_ != nullptr;
-  }
+  bool enabled() const { return flush_size() > 0 || cache_res_mgr_ != nullptr; }
 
   // Returns the total memory used by memtables.
   // Only valid if enabled().
@@ -68,53 +75,87 @@ class WriteBufferManager final {
     return memory_used_.load(std::memory_order_relaxed);
   }
 
-  // Returns the total memory used by active memtables.
-  size_t mutable_memtable_memory_usage() const {
-    return memory_active_.load(std::memory_order_relaxed);
-  }
-
   size_t dummy_entries_in_cache_usage() const;
 
-  // Returns the buffer_size.
-  size_t buffer_size() const {
-    return buffer_size_.load(std::memory_order_relaxed);
+  // Returns the flush_size.
+  size_t flush_size() const {
+    return flush_size_.load(std::memory_order_relaxed);
   }
 
-  void SetBufferSize(size_t new_size) {
-    buffer_size_.store(new_size, std::memory_order_relaxed);
-    mutable_limit_.store(new_size * 7 / 8, std::memory_order_relaxed);
+  size_t stall_size() const {
+    return static_cast<size_t>(flush_size() * stall_ratio_);
+  }
+
+  void SetFlushSize(size_t new_size) {
+    flush_size_.store(new_size, std::memory_order_relaxed);
     // Check if stall is active and can be ended.
     MaybeEndWriteStall();
   }
 
   // Below functions should be called by RocksDB internally.
 
-  void ReserveMem(size_t mem);
+  // This handle is the same as the one created by `DB::Open` or
+  // `DB::CreateColumnFamily`.
+  // `UnregisterColumnFamily()` must be called by DB before the handle is
+  // destroyed.
+  void RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
+    assert(db != nullptr);
+    auto sentinel = std::make_shared<WriteBufferSentinel>();
+    sentinel->db = db;
+    sentinel->cf = cf;
+    std::lock_guard<std::mutex> lock(head_mu_);
+    if (head_ != nullptr) {
+      sentinel->next = head_;
+      head_->prev = sentinel.get();
+    }
+    head_ = sentinel;
+  }
 
-  // We are in the process of freeing `mem` bytes, so it is not considered
-  // when checking the soft limit.
-  void ScheduleFreeMem(size_t mem);
+  // Called during `DB::Close`.
+  void UnregisterDB(DB* db) {
+    std::lock_guard<std::mutex> lock(head_mu_);
+    std::shared_ptr<WriteBufferSentinel>* current = &head_;
+    while (*current != nullptr) {
+      if ((*current)->db == db) {
+        *current = (*current)->next;
+      } else {
+        current = &((*current)->next);
+      }
+    }
+    // Schedule flush while we are holding lock.
+    MaybeFlush();
+  }
+
+  // Called during `DestroyColumnFamilyHandle`.
+  void UnregisterColumnFamily(ColumnFamilyHandle* cf) {
+    std::lock_guard<std::mutex> lock(head_mu_);
+    std::shared_ptr<WriteBufferSentinel>* current = &head_;
+    while (*current != nullptr) {
+      if ((*current)->cf == cf) {
+        *current = (*current)->next;
+      } else {
+        current = &((*current)->next);
+      }
+    }
+    // Schedule flush while we are holding lock.
+    MaybeFlush();
+  }
+
+  void ReserveMem(size_t mem);
 
   void FreeMem(size_t mem);
 
-  // Should only be called from write thread
-  bool ShouldFlush() const {
-    size_t local_size = buffer_size();
-    if (local_size > 0) {
-      if (mutable_memtable_memory_usage() >
-          mutable_limit_.load(std::memory_order_relaxed)) {
-        return true;
-      }
-      if (memory_usage() >= local_size &&
-          mutable_memtable_memory_usage() >= local_size / 2) {
-        // If the memory exceeds the buffer size, we trigger more aggressive
-        // flush. But if already more than half memory is being flushed,
-        // triggering more flush may not help. We will hold it instead.
-        return true;
-      }
+  void MaybeFlush() {
+    size_t local_size = flush_size();
+    if (local_size > 0 && memory_usage() >= local_size && head_mu_.try_lock()) {
+      MaybeFlushLocked();
+      head_mu_.unlock();
     }
-    return false;
   }
+
+  void MaybeFlushLocked();
+
+  bool TEST_ShouldFlush();
 
   // Returns true if total memory usage exceeded buffer_size.
   // We stall the writes untill memory_usage drops below buffer_size. When the
@@ -125,7 +166,7 @@ class WriteBufferManager final {
   // Should only be called by RocksDB internally .
   bool ShouldStall() const {
     return is_stall_active() ||
-           (allow_stall_ && buffer_size() > 0 && is_stall_threshold_exceeded())
+           (allow_stall_ && flush_size() > 0 && is_stall_threshold_exceeded());
   }
 
   // Returns true if stall is active.
@@ -136,7 +177,7 @@ class WriteBufferManager final {
   // Returns true if stalling condition is met. Only valid if buffer_size_ is
   // non-zero.
   bool is_stall_threshold_exceeded() const {
-    return memory_usage() >= buffer_size();
+    return memory_usage() >= stall_size();
   }
 
   // Add the DB instance to the queue and block the DB.
@@ -148,24 +189,32 @@ class WriteBufferManager final {
   void MaybeEndWriteStall();
 
   // Called when DB instance is closed.
-  void RemoveDBFromQueue(StallInterface* wbm_stall);
+  void RemoveDBFromStallQueue(StallInterface* wbm_stall);
 
  private:
+  struct WriteBufferSentinel {
+    DB* db;
+    ColumnFamilyHandle* cf;
+
+    // Protected by `head_mu_`.
+    WriteBufferSentinel* prev;
+    std::shared_ptr<WriteBufferSentinel> next;
+  };
+  std::shared_ptr<WriteBufferSentinel> head_;
+  std::mutex head_mu_;
+
   // Shared by buffer_size limit and cache charging.
-  // When cache charging is enabled, this is updated under cache_res_mgr_.
+  // When cache charging is enabled, this is updated under cache_res_mgr_mu_.
   std::atomic<size_t> memory_used_;
 
-  std::atomic<size_t> buffer_size_;
-  // Derived from buffer_size.
-  std::atomic<size_t> mutable_limit_;
-  // Memory that hasn't been scheduled to free.
-  // Only used when buffer_size is non-zero.
-  std::atomic<size_t> memory_active_;
+  std::atomic<size_t> flush_size_;
+  const bool flush_oldest_first_;
 
   const bool allow_stall_;
+  const float stall_ratio_;
   std::list<StallInterface*> queue_;
   // Protects the queue_ and stall_active_.
-  std::mutex mu_;
+  std::mutex stall_mu_;
   // Value should only be changed by BeginWriteStall() and MaybeEndWriteStall()
   // while holding mu_, but it can be read without a lock.
   // It is a cached value of `ShouldStall()`.

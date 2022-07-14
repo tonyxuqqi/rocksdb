@@ -310,6 +310,12 @@ class DBImpl : public DB {
                                            const Range& range,
                                            uint64_t* const count,
                                            uint64_t* const size) override;
+
+  using DB::GetApproximateActiveMemTableStats;
+  virtual void GetApproximateActiveMemTableStats(
+      ColumnFamilyHandle* column_family, uint64_t* const memory_bytes,
+      uint64_t* const oldest_key_time) override;
+
   using DB::CompactRange;
   virtual Status CompactRange(const CompactRangeOptions& options,
                               ColumnFamilyHandle* column_family,

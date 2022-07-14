@@ -1710,7 +1710,12 @@ struct FlushOptions {
   // is performed by someone else (foreground call or background thread).
   // Default: false
   bool allow_write_stall;
-  FlushOptions() : wait(true), allow_write_stall(false) {}
+  // Only switch mutable memtable if its size is larger than or equal to this
+  // parameter. Empty mutable memtable is always not switched.
+  // Default: 0
+  uint64_t min_size_to_flush;
+
+  FlushOptions() : wait(true), allow_write_stall(false), min_size_to_flush(0) {}
 };
 
 // Create a Logger from provided DBOptions
