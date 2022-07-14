@@ -19,13 +19,13 @@ namespace ROCKSDB_NAMESPACE {
 WriteBufferManager::WriteBufferManager(size_t _buffer_size,
                                        std::shared_ptr<Cache> cache,
                                        bool allow_stall)
-    : buffer_size_(_buffer_size),
+    : memory_used_(0),
+      buffer_size_(_buffer_size),
       mutable_limit_(buffer_size_ * 7 / 8),
-      memory_used_(0),
       memory_active_(0),
-      cache_res_mgr_(nullptr),
       allow_stall_(allow_stall),
-      stall_active_(false) {
+      stall_active_(false),
+      cache_res_mgr_(nullptr) {
 #ifndef ROCKSDB_LITE
   if (cache) {
     // Memtable's memory usage tends to fluctuate frequently
@@ -55,12 +55,13 @@ std::size_t WriteBufferManager::dummy_entries_in_cache_usage() const {
 }
 
 void WriteBufferManager::ReserveMem(size_t mem) {
+  size_t local_size = buffer_size();
   if (cache_res_mgr_ != nullptr) {
     ReserveMemWithCache(mem);
-  } else if (enabled()) {
+  } else if (local_size > 0) {
     memory_used_.fetch_add(mem, std::memory_order_relaxed);
   }
-  if (enabled()) {
+  if (local_size > 0) {
     memory_active_.fetch_add(mem, std::memory_order_relaxed);
   }
 }
@@ -91,7 +92,7 @@ void WriteBufferManager::ReserveMemWithCache(size_t mem) {
 }
 
 void WriteBufferManager::ScheduleFreeMem(size_t mem) {
-  if (enabled()) {
+  if (buffer_size() > 0) {
     memory_active_.fetch_sub(mem, std::memory_order_relaxed);
   }
 }
@@ -99,7 +100,7 @@ void WriteBufferManager::ScheduleFreeMem(size_t mem) {
 void WriteBufferManager::FreeMem(size_t mem) {
   if (cache_res_mgr_ != nullptr) {
     FreeMemWithCache(mem);
-  } else if (enabled()) {
+  } else if (buffer_size() > 0) {
     memory_used_.fetch_sub(mem, std::memory_order_relaxed);
   }
   // Check if stall is active and can be ended.
@@ -159,7 +160,7 @@ void WriteBufferManager::MaybeEndWriteStall() {
     return;
   }
 
-  if (IsStallThresholdExceeded()) {
+  if (is_stall_threshold_exceeded()) {
     return;  // Stall conditions have not resolved.
   }
 
@@ -187,7 +188,7 @@ void WriteBufferManager::RemoveDBFromQueue(StallInterface* wbm_stall) {
   // Deallocate the removed nodes outside of the lock.
   std::list<StallInterface*> cleanup;
 
-  if (enabled() && allow_stall_) {
+  if (allow_stall_) {
     std::unique_lock<std::mutex> lock(mu_);
     for (auto it = queue_.begin(); it != queue_.end();) {
       auto next = std::next(it);

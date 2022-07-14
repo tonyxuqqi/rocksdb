@@ -56,15 +56,14 @@ class WriteBufferManager final {
 
   ~WriteBufferManager();
 
-  // Returns true if buffer_limit is passed to limit the total memory usage and
-  // is greater than 0.
-  bool enabled() const { return buffer_size() > 0; }
-
-  // Returns true if pointer to cache is passed.
-  bool cost_to_cache() const { return cache_res_mgr_ != nullptr; }
+  // Returns true if a non-zero buffer_limit is passed to limit the total
+  // memory usage or cache is provided to charge write buffer memory.
+  bool enabled() const {
+    return buffer_size() > 0 || cache_res_mgr_ != nullptr;
+  }
 
   // Returns the total memory used by memtables.
-  // Only valid if enabled()
+  // Only valid if enabled().
   size_t memory_usage() const {
     return memory_used_.load(std::memory_order_relaxed);
   }
@@ -90,14 +89,22 @@ class WriteBufferManager final {
 
   // Below functions should be called by RocksDB internally.
 
+  void ReserveMem(size_t mem);
+
+  // We are in the process of freeing `mem` bytes, so it is not considered
+  // when checking the soft limit.
+  void ScheduleFreeMem(size_t mem);
+
+  void FreeMem(size_t mem);
+
   // Should only be called from write thread
   bool ShouldFlush() const {
-    if (enabled()) {
+    size_t local_size = buffer_size();
+    if (local_size > 0) {
       if (mutable_memtable_memory_usage() >
           mutable_limit_.load(std::memory_order_relaxed)) {
         return true;
       }
-      size_t local_size = buffer_size();
       if (memory_usage() >= local_size &&
           mutable_memtable_memory_usage() >= local_size / 2) {
         // If the memory exceeds the buffer size, we trigger more aggressive
@@ -117,30 +124,20 @@ class WriteBufferManager final {
   //
   // Should only be called by RocksDB internally .
   bool ShouldStall() const {
-    if (!allow_stall_ || !enabled()) {
-      return false;
-    }
-
-    return IsStallActive() || IsStallThresholdExceeded();
+    return is_stall_active() ||
+           (allow_stall_ && buffer_size() > 0 && is_stall_threshold_exceeded())
   }
 
   // Returns true if stall is active.
-  bool IsStallActive() const {
+  bool is_stall_active() const {
     return stall_active_.load(std::memory_order_relaxed);
   }
 
-  // Returns true if stalling condition is met.
-  bool IsStallThresholdExceeded() const {
-    return memory_usage() >= buffer_size_;
+  // Returns true if stalling condition is met. Only valid if buffer_size_ is
+  // non-zero.
+  bool is_stall_threshold_exceeded() const {
+    return memory_usage() >= buffer_size();
   }
-
-  void ReserveMem(size_t mem);
-
-  // We are in the process of freeing `mem` bytes, so it is not considered
-  // when checking the soft limit.
-  void ScheduleFreeMem(size_t mem);
-
-  void FreeMem(size_t mem);
 
   // Add the DB instance to the queue and block the DB.
   // Should only be called by RocksDB internally.
@@ -150,25 +147,33 @@ class WriteBufferManager final {
   // signal them to continue.
   void MaybeEndWriteStall();
 
+  // Called when DB instance is closed.
   void RemoveDBFromQueue(StallInterface* wbm_stall);
 
  private:
-  std::atomic<size_t> buffer_size_;
-  std::atomic<size_t> mutable_limit_;
+  // Shared by buffer_size limit and cache charging.
+  // When cache charging is enabled, this is updated under cache_res_mgr_.
   std::atomic<size_t> memory_used_;
-  // Memory that hasn't been scheduled to free.
-  std::atomic<size_t> memory_active_;
-  std::unique_ptr<CacheReservationManager> cache_res_mgr_;
-  // Protects cache_res_mgr_
-  std::mutex cache_res_mgr_mu_;
 
+  std::atomic<size_t> buffer_size_;
+  // Derived from buffer_size.
+  std::atomic<size_t> mutable_limit_;
+  // Memory that hasn't been scheduled to free.
+  // Only used when buffer_size is non-zero.
+  std::atomic<size_t> memory_active_;
+
+  const bool allow_stall_;
   std::list<StallInterface*> queue_;
   // Protects the queue_ and stall_active_.
   std::mutex mu_;
-  bool allow_stall_;
   // Value should only be changed by BeginWriteStall() and MaybeEndWriteStall()
   // while holding mu_, but it can be read without a lock.
+  // It is a cached value of `ShouldStall()`.
   std::atomic<bool> stall_active_;
+
+  std::unique_ptr<CacheReservationManager> cache_res_mgr_;
+  // Protects cache_res_mgr_
+  std::mutex cache_res_mgr_mu_;
 
   void ReserveMemWithCache(size_t mem);
   void FreeMemWithCache(size_t mem);
