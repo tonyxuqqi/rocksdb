@@ -24,6 +24,7 @@ WriteBufferManager::WriteBufferManager(size_t _flush_size,
     : head_(nullptr),
       memory_used_(0),
       flush_size_(_flush_size),
+      memory_active_(0),
       flush_oldest_first_(flush_oldest_first),
       allow_stall_(stall_ratio >= 1.0),
       stall_ratio_(stall_ratio),
@@ -64,6 +65,9 @@ void WriteBufferManager::ReserveMem(size_t mem) {
   } else if (local_size > 0) {
     memory_used_.fetch_add(mem, std::memory_order_relaxed);
   }
+  if (local_size > 0) {
+    memory_active_.fetch_add(mem, std::memory_order_relaxed);
+  }
 }
 
 // Should only be called from write thread
@@ -89,6 +93,12 @@ void WriteBufferManager::ReserveMemWithCache(size_t mem) {
 #else
   (void)mem;
 #endif  // ROCKSDB_LITE
+}
+
+void WriteBufferManager::ScheduleFreeMem(size_t mem) {
+  if (flush_size() > 0) {
+    memory_active_.fetch_sub(mem, std::memory_order_relaxed);
+  }
 }
 
 void WriteBufferManager::FreeMem(size_t mem) {
@@ -128,7 +138,7 @@ void WriteBufferManager::MaybeFlushLocked() {
   constexpr size_t kNumberFlushes = 2;
 
   size_t local_size = flush_size();
-  if (local_size == 0 || memory_usage() < local_size) {
+  if (!ShouldFlush()) {
     return;
   }
   WriteBufferSentinel* current = head_.get();
@@ -168,23 +178,6 @@ void WriteBufferManager::MaybeFlushLocked() {
       c.first->db->Flush(flush_opts, c.first->cf);
     }
   }
-}
-
-bool WriteBufferManager::TEST_ShouldFlush() {
-  size_t local_size = flush_size();
-  if (local_size == 0 || memory_usage() < local_size) {
-    return false;
-  }
-  WriteBufferSentinel* current = head_.get();
-  size_t total_active_mem = 0;
-  while (current != nullptr) {
-    uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
-    current->db->GetApproximateActiveMemTableStats(
-        current->cf, &current_memory_bytes, nullptr);
-    total_active_mem += current_memory_bytes;
-    current = current->next.get();
-  }
-  return total_active_mem >= local_size;
 }
 
 void WriteBufferManager::BeginWriteStall(StallInterface* wbm_stall) {

@@ -4104,9 +4104,6 @@ Status DB::DestroyColumnFamilyHandle(ColumnFamilyHandle* column_family) {
     return Status::InvalidArgument(
         "Cannot destroy the handle returned by DefaultColumnFamily()");
   }
-  if (write_buffer_manager_) {
-    write_buffer_manager_->UnregisterColumnFamily(column_family);
-  }
   delete column_family;
   return Status::OK();
 }

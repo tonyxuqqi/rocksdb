@@ -39,22 +39,26 @@ class StallInterface {
 class WriteBufferManager final {
  public:
   // Parameters:
-  // flush_size: When the total size of mutable memtables exceeds this limit,
+  // - flush_size: When the total size of mutable memtables exceeds this limit,
   // the largest one will be frozen and scheduled for flush. Disabled when 0.
+  //
   // Immutable memtables are excluded for this reason: RocksDB always schedule
   // a flush for newly created immutable memtable. We can consider them evicted
   // from memory if flush bandwidth is sufficient.
   //
-  // stall_ratio: When the total size of memtables exceeds ratio*flush_size,
+  // It's an undefined behavior to enable/disable flush limit after the manager
+  // has been used by a DB instance.
+  //
+  // - stall_ratio: When the total size of memtables exceeds ratio*flush_size,
   // user writes will be delayed. Disabled when smaller than 1.
   //
-  // flush_oldest_first: By default we freeze the largest mutable memtable when
-  // `flush_size` is triggered. By enabling this flag, the oldest mutable
+  // - flush_oldest_first: By default we freeze the largest mutable memtable
+  // when `flush_size` is triggered. By enabling this flag, the oldest mutable
   // memtable will be frozen instead.
   //
-  // cache: if `cache` is provided, memtable memory will be charged as a dummy
-  // entry This is useful to keep the memory sum of both memtable and block
-  // cache under control.
+  // - cache: if `cache` is provided, memtable memory will be charged as a
+  // dummy entry This is useful to keep the memory sum of both memtable and
+  // block cache under control.
   explicit WriteBufferManager(size_t flush_size,
                               std::shared_ptr<Cache> cache = {},
                               float stall_ratio = 0.0,
@@ -73,6 +77,11 @@ class WriteBufferManager final {
   // Only valid if enabled().
   size_t memory_usage() const {
     return memory_used_.load(std::memory_order_relaxed);
+  }
+
+  // Returns the total memory used by active memtables.
+  size_t mutable_memtable_memory_usage() const {
+    return memory_active_.load(std::memory_order_relaxed);
   }
 
   size_t dummy_entries_in_cache_usage() const;
@@ -104,9 +113,9 @@ class WriteBufferManager final {
     sentinel->db = db;
     sentinel->cf = cf;
     std::lock_guard<std::mutex> lock(head_mu_);
+    MaybeFlushLocked();
     if (head_ != nullptr) {
       sentinel->next = head_;
-      head_->prev = sentinel.get();
     }
     head_ = sentinel;
   }
@@ -122,8 +131,7 @@ class WriteBufferManager final {
         current = &((*current)->next);
       }
     }
-    // Schedule flush while we are holding lock.
-    MaybeFlush();
+    MaybeFlushLocked();
   }
 
   // Called during `DestroyColumnFamilyHandle`.
@@ -137,25 +145,31 @@ class WriteBufferManager final {
         current = &((*current)->next);
       }
     }
-    // Schedule flush while we are holding lock.
-    MaybeFlush();
+    MaybeFlushLocked();
   }
 
   void ReserveMem(size_t mem);
 
+  // We are in the process of freeing `mem` bytes, so it is not considered
+  // when checking the soft limit.
+  void ScheduleFreeMem(size_t mem);
+
   void FreeMem(size_t mem);
 
-  void MaybeFlush() {
+  // Whether the DB writer should call `MaybeFlush` before write.
+  bool ShouldFlush() {
     size_t local_size = flush_size();
-    if (local_size > 0 && memory_usage() >= local_size && head_mu_.try_lock()) {
+    return local_size > 0 && mutable_memtable_memory_usage() >= local_size;
+  }
+
+  void MaybeFlush() {
+    if (head_mu_.try_lock()) {
       MaybeFlushLocked();
       head_mu_.unlock();
     }
   }
 
   void MaybeFlushLocked();
-
-  bool TEST_ShouldFlush();
 
   // Returns true if total memory usage exceeded buffer_size.
   // We stall the writes untill memory_usage drops below buffer_size. When the
@@ -196,18 +210,19 @@ class WriteBufferManager final {
     DB* db;
     ColumnFamilyHandle* cf;
 
-    // Protected by `head_mu_`.
-    WriteBufferSentinel* prev;
     std::shared_ptr<WriteBufferSentinel> next;
   };
+  // Protected by `head_mu_`.
   std::shared_ptr<WriteBufferSentinel> head_;
   std::mutex head_mu_;
 
-  // Shared by buffer_size limit and cache charging.
+  // Shared by flush_size limit and cache charging.
   // When cache charging is enabled, this is updated under cache_res_mgr_mu_.
   std::atomic<size_t> memory_used_;
 
   std::atomic<size_t> flush_size_;
+  // Only used when flush_size is non-zero.
+  std::atomic<size_t> memory_active_;
   const bool flush_oldest_first_;
 
   const bool allow_stall_;

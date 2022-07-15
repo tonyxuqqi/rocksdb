@@ -1257,7 +1257,11 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
     status = SwitchWAL(write_context);
   }
 
-  write_buffer_manager_->MaybeFlush();
+  if (write_buffer_manager_->ShouldFlush()) {
+    mutex_.Unlock();
+    write_buffer_manager_->MaybeFlush();
+    mutex_.Lock();
+  }
 
   if (UNLIKELY(status.ok() && !trim_history_scheduler_.Empty())) {
     status = TrimMemtableHistory(write_context);

@@ -1180,8 +1180,8 @@ class DB {
   }
 
   virtual void GetApproximateActiveMemTableStats(
-      ColumnFamilyHandle* column_family, uint64_t* const memory_bytes,
-      uint64_t* const oldest_key_time) {}
+      ColumnFamilyHandle* /*column_family*/, uint64_t* const /*memory_bytes*/,
+      uint64_t* const /*oldest_key_time*/) {}
 
   // Deprecated versions of GetApproximateSizes
   ROCKSDB_DEPRECATED_FUNC virtual void GetApproximateSizes(

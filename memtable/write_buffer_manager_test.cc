@@ -16,6 +16,29 @@ class WriteBufferManagerTest : public testing::Test {};
 #ifndef ROCKSDB_LITE
 const size_t kSizeDummyEntry = 256 * 1024;
 
+TEST_F(WriteBufferManagerTest, ShouldFlush) {
+  // A write buffer manager of size 10MB
+  std::unique_ptr<WriteBufferManager> wbf(
+      new WriteBufferManager(10 * 1024 * 1024));
+
+  wbf->ReserveMem(8 * 1024 * 1024);
+  ASSERT_FALSE(wbf->ShouldFlush());
+  wbf->ReserveMem(2 * 1024 * 1024);
+  ASSERT_TRUE(wbf->ShouldFlush());
+  // Scheduling for freeing will release the condition
+  wbf->ScheduleFreeMem(1 * 1024 * 1024);
+  ASSERT_FALSE(wbf->ShouldFlush());
+
+  // change size: 8M limit.
+  wbf->SetBufferSize(8 * 1024 * 1024);
+  // 9MB mutable.
+  ASSERT_TRUE(wbf->ShouldFlush());
+
+  wbf->ScheduleFreeMem(2 * 1024 * 1024);
+  // 7MB mutable.
+  ASSERT_FALSE(wbf->ShouldFlush());
+}
+
 TEST_F(WriteBufferManagerTest, CacheCost) {
   constexpr std::size_t kMetaDataChargeOverhead = 10000;
 
