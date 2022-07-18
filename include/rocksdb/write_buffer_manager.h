@@ -95,11 +95,7 @@ class WriteBufferManager final {
     return static_cast<size_t>(flush_size() * stall_ratio_);
   }
 
-  void SetFlushSize(size_t new_size) {
-    flush_size_.store(new_size, std::memory_order_relaxed);
-    // Check if stall is active and can be ended.
-    MaybeEndWriteStall();
-  }
+  void SetFlushSize(size_t new_size);
 
   // Below functions should be called by RocksDB internally.
 
@@ -186,6 +182,7 @@ class WriteBufferManager final {
   };
   // Protected by `head_mu_`.
   std::shared_ptr<WriteBufferSentinel> head_;
+  size_t num_sentinels_;
   std::mutex head_mu_;
 
   // Shared by flush_size limit and cache charging.

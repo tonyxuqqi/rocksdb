@@ -9,6 +9,8 @@
 
 #include "rocksdb/write_buffer_manager.h"
 
+#include <algorithm>
+
 #include "cache/cache_entry_roles.h"
 #include "cache/cache_reservation_manager.h"
 #include "db/db_impl/db_impl.h"
@@ -22,6 +24,7 @@ WriteBufferManager::WriteBufferManager(size_t _flush_size,
                                        float stall_ratio,
                                        bool flush_oldest_first)
     : head_(nullptr),
+      num_sentinels_(0),
       memory_used_(0),
       flush_size_(_flush_size),
       memory_active_(0),
@@ -58,6 +61,21 @@ std::size_t WriteBufferManager::dummy_entries_in_cache_usage() const {
   }
 }
 
+void WriteBufferManager::SetFlushSize(size_t new_size) {
+  if (flush_size_.exchange(new_size, std::memory_order_relaxed) > new_size) {
+    // Threshold is decreased. We must make sure all outstanding memtables
+    // are flushed.
+    std::lock_guard<std::mutex> lock(head_mu_);
+    uint64_t max_retry = num_sentinels_;
+    while ((max_retry--) && ShouldFlush()) {
+      MaybeFlushLocked();
+    }
+  } else {
+    // Check if stall is active and can be ended.
+    MaybeEndWriteStall();
+  }
+}
+
 void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
   assert(db != nullptr);
   auto sentinel = std::make_shared<WriteBufferSentinel>();
@@ -69,6 +87,7 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
     sentinel->next = head_;
   }
   head_ = sentinel;
+  num_sentinels_++;
 }
 
 void WriteBufferManager::UnregisterDB(DB* db) {
@@ -77,6 +96,7 @@ void WriteBufferManager::UnregisterDB(DB* db) {
   while (*current != nullptr) {
     if ((*current)->db == db) {
       *current = (*current)->next;
+      num_sentinels_--;
     } else {
       current = &((*current)->next);
     }
@@ -90,6 +110,7 @@ void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
   while (*current != nullptr) {
     if ((*current)->cf == cf) {
       *current = (*current)->next;
+      num_sentinels_--;
     } else {
       current = &((*current)->next);
     }
@@ -173,55 +194,50 @@ void WriteBufferManager::FreeMemWithCache(size_t mem) {
 }
 
 void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
-  // If size trigger is reached, flush at most `nFlushCandidates` column
-  // families with
-  // the highest score.
-  constexpr size_t nFlushCandidates = 3;
-
   size_t local_size = flush_size();
   if (!ShouldFlush()) {
     return;
   }
   WriteBufferSentinel* current = head_.get();
-  std::pair<WriteBufferSentinel*, uint64_t> candidates[nFlushCandidates];
-  size_t n_candidates = 0;
-  size_t total_active_mem = 0;
+  uint64_t total_active_mem = 0;
+  // We only flush at most one column family at a time.
+  // This is enough to keep size under control except when flush_size is
+  // dynamically decreased. That case is managed in `SetFlushSize`.
+  WriteBufferSentinel* candidate = nullptr;
+  uint64_t max_score = 0;
+  uint64_t current_score = 0;
+  size_t num_sentinels = 0;
   while (current != nullptr) {
     uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
-    uint64_t current_score = std::numeric_limits<uint64_t>::max();
+    uint64_t oldest_time = std::numeric_limits<uint64_t>::max();
     current->db->GetApproximateActiveMemTableStats(
-        current->cf, &current_memory_bytes, &current_score);
-    if (!flush_oldest_first_) {
+        current->cf, &current_memory_bytes, &oldest_time);
+    if (flush_oldest_first_) {
+      // Convert oldest to highest score.
+      current_score = std::numeric_limits<uint64_t>::max() - oldest_time;
+    } else {
       current_score = current_memory_bytes;
     }
-    if (n_candidates < nFlushCandidates) {
-      candidates[n_candidates] = std::make_pair(current, current_score);
-      n_candidates += 1;
-    } else {
-      for (auto& c : candidates) {
-        if (c.second < current_score) {
-          c.first = current;
-          c.second = current_score;
-          break;
-        }
-      }
+    if (current_score > max_score) {
+      candidate = current;
+      max_score = current_score;
     }
-    total_active_mem += current_memory_bytes;
     current = current->next.get();
+    total_active_mem += current_memory_bytes;
+    num_sentinels++;
   }
+  assert(num_sentinels == num_sentinels_);
 
-  FlushOptions flush_opts;
-  flush_opts.allow_write_stall = true;
-  flush_opts.wait = false;
-  for (auto& c : candidates) {
-    if (total_active_mem < local_size) {
-      break;
-    }
-    if (c.second > 0) {
-      flush_opts._write_stopped = (c.first->db == this_db);
-      flush_opts.min_size_to_flush = c.second - 1;
-      c.first->db->Flush(flush_opts, c.first->cf);
-      total_active_mem -= c.second;
+  if (total_active_mem > local_size) {
+    FlushOptions flush_opts;
+    flush_opts.allow_write_stall = true;
+    flush_opts.wait = false;
+    if (candidate != nullptr) {
+      flush_opts._write_stopped = (candidate->db == this_db);
+      if (!flush_oldest_first_) {
+        flush_opts.min_size_to_flush = max_score - 1;
+      }
+      candidate->db->Flush(flush_opts, candidate->cf);
     }
   }
 }

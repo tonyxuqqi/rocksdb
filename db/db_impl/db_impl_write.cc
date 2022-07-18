@@ -1257,6 +1257,7 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
     status = SwitchWAL(write_context);
   }
 
+  // Ordering: before write delay.
   if (write_buffer_manager_->ShouldFlush()) {
     mutex_.Unlock();
     write_buffer_manager_->MaybeFlush(this);
