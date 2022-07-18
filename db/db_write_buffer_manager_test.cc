@@ -31,10 +31,10 @@ TEST_P(DBWriteBufferManagerTest, SharedBufferAcrossCFs1) {
 
   if (cost_cache_) {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, cache, true));
+        new WriteBufferManager(100000, cache, 1.0));
   } else {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, nullptr, true));
+        new WriteBufferManager(100000, nullptr, 1.0));
   }
 
   WriteOptions wo;
@@ -74,10 +74,10 @@ TEST_P(DBWriteBufferManagerTest, SharedWriteBufferAcrossCFs2) {
 
   if (cost_cache_) {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, cache, true));
+        new WriteBufferManager(100000, cache, 1.0));
   } else {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, nullptr, true));
+        new WriteBufferManager(100000, nullptr, 1.0));
   }
   WriteOptions wo;
   wo.disableWAL = true;
@@ -201,10 +201,10 @@ TEST_P(DBWriteBufferManagerTest, SharedWriteBufferLimitAcrossDB) {
 
   if (cost_cache_) {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, cache, true));
+        new WriteBufferManager(100000, cache, 1.0));
   } else {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, nullptr, true));
+        new WriteBufferManager(100000, nullptr, 1.0));
   }
   CreateAndReopenWithCF({"cf1", "cf2"}, options);
 
@@ -318,10 +318,10 @@ TEST_P(DBWriteBufferManagerTest, SharedWriteBufferLimitAcrossDB1) {
 
   if (cost_cache_) {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, cache, true));
+        new WriteBufferManager(100000, cache, 1.0));
   } else {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, nullptr, true));
+        new WriteBufferManager(100000, nullptr, 1.0));
   }
   CreateAndReopenWithCF({"cf1", "cf2"}, options);
 
@@ -460,10 +460,10 @@ TEST_P(DBWriteBufferManagerTest, MixedSlowDownOptionsSingleDB) {
 
   if (cost_cache_) {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, cache, true));
+        new WriteBufferManager(100000, cache, 1.0));
   } else {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, nullptr, true));
+        new WriteBufferManager(100000, nullptr, 1.0));
   }
   WriteOptions wo;
   wo.disableWAL = true;
@@ -622,10 +622,10 @@ TEST_P(DBWriteBufferManagerTest, MixedSlowDownOptionsMultipleDB) {
 
   if (cost_cache_) {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, cache, true));
+        new WriteBufferManager(100000, cache, 1.0));
   } else {
     options.write_buffer_manager.reset(
-        new WriteBufferManager(100000, nullptr, true));
+        new WriteBufferManager(100000, nullptr, 1.0));
   }
   CreateAndReopenWithCF({"cf1", "cf2"}, options);
 

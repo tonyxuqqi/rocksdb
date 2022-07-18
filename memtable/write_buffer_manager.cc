@@ -58,6 +58,45 @@ std::size_t WriteBufferManager::dummy_entries_in_cache_usage() const {
   }
 }
 
+void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
+  assert(db != nullptr);
+  auto sentinel = std::make_shared<WriteBufferSentinel>();
+  sentinel->db = db;
+  sentinel->cf = cf;
+  std::lock_guard<std::mutex> lock(head_mu_);
+  MaybeFlushLocked();
+  if (head_ != nullptr) {
+    sentinel->next = head_;
+  }
+  head_ = sentinel;
+}
+
+void WriteBufferManager::UnregisterDB(DB* db) {
+  std::lock_guard<std::mutex> lock(head_mu_);
+  std::shared_ptr<WriteBufferSentinel>* current = &head_;
+  while (*current != nullptr) {
+    if ((*current)->db == db) {
+      *current = (*current)->next;
+    } else {
+      current = &((*current)->next);
+    }
+  }
+  MaybeFlushLocked();
+}
+
+void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
+  std::lock_guard<std::mutex> lock(head_mu_);
+  std::shared_ptr<WriteBufferSentinel>* current = &head_;
+  while (*current != nullptr) {
+    if ((*current)->cf == cf) {
+      *current = (*current)->next;
+    } else {
+      current = &((*current)->next);
+    }
+  }
+  MaybeFlushLocked();
+}
+
 void WriteBufferManager::ReserveMem(size_t mem) {
   size_t local_size = flush_size();
   if (cache_res_mgr_ != nullptr) {
@@ -132,35 +171,37 @@ void WriteBufferManager::FreeMemWithCache(size_t mem) {
   (void)mem;
 #endif  // ROCKSDB_LITE
 }
-void WriteBufferManager::MaybeFlushLocked() {
-  // If size trigger is reached, flush `kNumberFlushes` column families with
+
+void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
+  // If size trigger is reached, flush at most `nFlushCandidates` column
+  // families with
   // the highest score.
-  constexpr size_t kNumberFlushes = 2;
+  constexpr size_t nFlushCandidates = 3;
 
   size_t local_size = flush_size();
   if (!ShouldFlush()) {
     return;
   }
   WriteBufferSentinel* current = head_.get();
-  std::pair<WriteBufferSentinel*, size_t> candidates[kNumberFlushes];
+  std::pair<WriteBufferSentinel*, uint64_t> candidates[nFlushCandidates];
   size_t n_candidates = 0;
   size_t total_active_mem = 0;
   while (current != nullptr) {
     uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
-    uint64_t current_stats = std::numeric_limits<uint64_t>::max();
+    uint64_t current_score = std::numeric_limits<uint64_t>::max();
     current->db->GetApproximateActiveMemTableStats(
-        current->cf, &current_memory_bytes, &current_stats);
-    if (n_candidates < kNumberFlushes) {
-      candidates[n_candidates] = std::make_pair(current, current_stats);
+        current->cf, &current_memory_bytes, &current_score);
+    if (!flush_oldest_first_) {
+      current_score = current_memory_bytes;
+    }
+    if (n_candidates < nFlushCandidates) {
+      candidates[n_candidates] = std::make_pair(current, current_score);
       n_candidates += 1;
     } else {
-      if (!flush_oldest_first_) {
-        current_stats = current_memory_bytes;
-      }
       for (auto& c : candidates) {
-        if (c.second < current_stats) {
+        if (c.second < current_score) {
           c.first = current;
-          c.second = current_stats;
+          c.second = current_score;
           break;
         }
       }
@@ -169,13 +210,18 @@ void WriteBufferManager::MaybeFlushLocked() {
     current = current->next.get();
   }
 
-  if (total_active_mem >= local_size) {
-    FlushOptions flush_opts;
-    flush_opts.allow_write_stall = true;
-    flush_opts.wait = false;
-    for (auto& c : candidates) {
-      flush_opts.min_size_to_flush = c.second;
+  FlushOptions flush_opts;
+  flush_opts.allow_write_stall = true;
+  flush_opts.wait = false;
+  for (auto& c : candidates) {
+    if (total_active_mem < local_size) {
+      break;
+    }
+    if (c.second > 0) {
+      flush_opts._write_stopped = (c.first->db == this_db);
+      flush_opts.min_size_to_flush = c.second - 1;
       c.first->db->Flush(flush_opts, c.first->cf);
+      total_active_mem -= c.second;
     }
   }
 }
@@ -205,7 +251,7 @@ void WriteBufferManager::BeginWriteStall(StallInterface* wbm_stall) {
 
 // Called when memory is freed in FreeMem or the buffer size has changed.
 void WriteBufferManager::MaybeEndWriteStall() {
-  // Cannot early-exit on !enabled() because SetBufferSize(0) needs to unblock
+  // Cannot early-exit on !enabled() because SetFlushSize(0) needs to unblock
   // the writers.
   if (!allow_stall_) {
     return;
@@ -233,7 +279,7 @@ void WriteBufferManager::MaybeEndWriteStall() {
   cleanup = std::move(queue_);
 }
 
-void WriteBufferManager::RemoveDBFromStallQueue(StallInterface* wbm_stall) {
+void WriteBufferManager::RemoveFromStallQueue(StallInterface* wbm_stall) {
   assert(wbm_stall != nullptr);
 
   // Deallocate the removed nodes outside of the lock.

@@ -1913,8 +1913,16 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
   if (s.ok()) {
     impl->StartPeriodicWorkScheduler();
     if (impl->write_buffer_manager_) {
-      for (auto* h : *handles) {
-        impl->write_buffer_manager_->RegisterColumnFamily(impl, h);
+      for (auto* cf : *handles) {
+        if (cf->GetName() == kDefaultColumnFamilyName) {
+          impl->write_buffer_manager_->RegisterColumnFamily(
+              impl, impl->default_cf_handle_);
+        } else if (cf->GetName() == kPersistentStatsColumnFamilyName) {
+          impl->write_buffer_manager_->RegisterColumnFamily(
+              impl, impl->persist_stats_cf_handle_);
+        } else {
+          impl->write_buffer_manager_->RegisterColumnFamily(impl, cf);
+        }
       }
     }
   } else {

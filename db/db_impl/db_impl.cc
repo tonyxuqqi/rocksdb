@@ -712,7 +712,7 @@ Status DBImpl::CloseHelper() {
   }
 
   if (write_buffer_manager_ && wbm_stall_) {
-    write_buffer_manager_->RemoveDBFromStallQueue(wbm_stall_.get());
+    write_buffer_manager_->RemoveFromStallQueue(wbm_stall_.get());
   }
   if (write_buffer_manager_) {
     write_buffer_manager_->UnregisterDB(this);
@@ -2814,6 +2814,9 @@ Status DBImpl::CreateColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
   if (s.ok()) {
     NewThreadStatusCfInfo(
         static_cast_with_check<ColumnFamilyHandleImpl>(*handle)->cfd());
+    if (write_buffer_manager_ != nullptr) {
+      write_buffer_manager_->RegisterColumnFamily(this, *handle);
+    }
   }
   return s;
 }

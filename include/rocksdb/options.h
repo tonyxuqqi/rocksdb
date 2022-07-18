@@ -1714,8 +1714,15 @@ struct FlushOptions {
   // parameter. Empty mutable memtable is always not switched.
   // Default: 0
   uint64_t min_size_to_flush;
+  // Used by RocksDB internally.
+  // Default: false
+  bool _write_stopped;
 
-  FlushOptions() : wait(true), allow_write_stall(false), min_size_to_flush(0) {}
+  FlushOptions()
+      : wait(true),
+        allow_write_stall(false),
+        min_size_to_flush(0),
+        _write_stopped(false) {}
 };
 
 // Create a Logger from provided DBOptions

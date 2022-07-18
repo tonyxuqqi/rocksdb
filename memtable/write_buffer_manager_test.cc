@@ -30,7 +30,7 @@ TEST_F(WriteBufferManagerTest, ShouldFlush) {
   ASSERT_FALSE(wbf->ShouldFlush());
 
   // change size: 8M limit.
-  wbf->SetBufferSize(8 * 1024 * 1024);
+  wbf->SetFlushSize(8 * 1024 * 1024);
   // 9MB mutable.
   ASSERT_TRUE(wbf->ShouldFlush());
 

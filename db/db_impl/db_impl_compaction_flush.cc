@@ -1997,6 +1997,8 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
     }
   }
 
+  writes_stopped |= flush_options._write_stopped;
+
   autovector<FlushRequest> flush_reqs;
   autovector<uint64_t> memtable_ids_to_wait;
   {

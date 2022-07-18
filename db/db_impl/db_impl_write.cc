@@ -1259,7 +1259,7 @@ Status DBImpl::PreprocessWrite(const WriteOptions& write_options,
 
   if (write_buffer_manager_->ShouldFlush()) {
     mutex_.Unlock();
-    write_buffer_manager_->MaybeFlush();
+    write_buffer_manager_->MaybeFlush(this);
     mutex_.Lock();
   }
 

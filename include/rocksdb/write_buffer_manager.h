@@ -105,48 +105,18 @@ class WriteBufferManager final {
 
   // This handle is the same as the one created by `DB::Open` or
   // `DB::CreateColumnFamily`.
+  // Must be called not holding db mutex and not inside write thread.
   // `UnregisterColumnFamily()` must be called by DB before the handle is
   // destroyed.
-  void RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
-    assert(db != nullptr);
-    auto sentinel = std::make_shared<WriteBufferSentinel>();
-    sentinel->db = db;
-    sentinel->cf = cf;
-    std::lock_guard<std::mutex> lock(head_mu_);
-    MaybeFlushLocked();
-    if (head_ != nullptr) {
-      sentinel->next = head_;
-    }
-    head_ = sentinel;
-  }
+  void RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf);
 
   // Called during `DB::Close`.
-  void UnregisterDB(DB* db) {
-    std::lock_guard<std::mutex> lock(head_mu_);
-    std::shared_ptr<WriteBufferSentinel>* current = &head_;
-    while (*current != nullptr) {
-      if ((*current)->db == db) {
-        *current = (*current)->next;
-      } else {
-        current = &((*current)->next);
-      }
-    }
-    MaybeFlushLocked();
-  }
+  // Must be called not holding db mutex and not inside write thread.
+  void UnregisterDB(DB* db);
 
   // Called during `DestroyColumnFamilyHandle`.
-  void UnregisterColumnFamily(ColumnFamilyHandle* cf) {
-    std::lock_guard<std::mutex> lock(head_mu_);
-    std::shared_ptr<WriteBufferSentinel>* current = &head_;
-    while (*current != nullptr) {
-      if ((*current)->cf == cf) {
-        *current = (*current)->next;
-      } else {
-        current = &((*current)->next);
-      }
-    }
-    MaybeFlushLocked();
-  }
+  // Must be called not holding db mutex and not inside write thread.
+  void UnregisterColumnFamily(ColumnFamilyHandle* cf);
 
   void ReserveMem(size_t mem);
 
@@ -162,14 +132,16 @@ class WriteBufferManager final {
     return local_size > 0 && mutable_memtable_memory_usage() >= local_size;
   }
 
-  void MaybeFlush() {
+  // Must be called without holding db mutex. When called in write thread, must
+  // pass in the pointer to the db.
+  void MaybeFlush(DB* this_db) {
     if (head_mu_.try_lock()) {
-      MaybeFlushLocked();
+      MaybeFlushLocked(this_db);
       head_mu_.unlock();
     }
   }
 
-  void MaybeFlushLocked();
+  void MaybeFlushLocked(DB* this_db = nullptr);
 
   // Returns true if total memory usage exceeded buffer_size.
   // We stall the writes untill memory_usage drops below buffer_size. When the
@@ -203,7 +175,7 @@ class WriteBufferManager final {
   void MaybeEndWriteStall();
 
   // Called when DB instance is closed.
-  void RemoveDBFromStallQueue(StallInterface* wbm_stall);
+  void RemoveFromStallQueue(StallInterface* wbm_stall);
 
  private:
   struct WriteBufferSentinel {
