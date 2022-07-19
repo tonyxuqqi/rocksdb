@@ -131,9 +131,9 @@ class WriteBufferManager final {
   // Must be called without holding db mutex. When called in write thread, must
   // pass in the pointer to the db.
   void MaybeFlush(DB* this_db) {
-    if (head_mu_.try_lock()) {
+    if (sentinels_mu_.try_lock()) {
       MaybeFlushLocked(this_db);
-      head_mu_.unlock();
+      sentinels_mu_.unlock();
     }
   }
 
@@ -177,13 +177,10 @@ class WriteBufferManager final {
   struct WriteBufferSentinel {
     DB* db;
     ColumnFamilyHandle* cf;
-
-    std::shared_ptr<WriteBufferSentinel> next;
   };
-  // Protected by `head_mu_`.
-  std::shared_ptr<WriteBufferSentinel> head_;
-  size_t num_sentinels_;
-  std::mutex head_mu_;
+  // Protected by `sentinels_mu_`.
+  std::list<std::shared_ptr<WriteBufferSentinel>> sentinels_;
+  std::mutex sentinels_mu_;
 
   // Shared by flush_size limit and cache charging.
   // When cache charging is enabled, this is updated under cache_res_mgr_mu_.

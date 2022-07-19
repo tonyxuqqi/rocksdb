@@ -182,7 +182,8 @@ TEST_P(DBWriteBufferManagerTest, SharedWriteBufferAcrossCFs2) {
 TEST_P(DBWriteBufferManagerTest, FreeMemoryOnDestroy) {
   Options options = CurrentOptions();
   options.arena_block_size = 4096;
-  options.write_buffer_size = 500000;  // this is never hit
+  options.write_buffer_size = 500000;   // this is never hit
+  options.max_write_buffer_number = 5;  // Avoid unexpected stalling.
   std::shared_ptr<Cache> cache = NewLRUCache(4 * 1024 * 1024, 2);
   ASSERT_LT(cache->GetUsage(), 256 * 1024);
   cost_cache_ = GetParam();
@@ -209,14 +210,15 @@ TEST_P(DBWriteBufferManagerTest, FreeMemoryOnDestroy) {
   wo.no_slowdown = true;
 
   ASSERT_OK(db2->Put(wo, Key(1), DummyString(30000)));
-  ASSERT_OK(Put(1, Key(1), DummyString(30000), wo));
-  ASSERT_OK(Put(0, Key(1), DummyString(30000), wo));
+  ASSERT_OK(Put(1, Key(1), DummyString(20000), wo));
+  ASSERT_OK(Put(0, Key(1), DummyString(40000), wo));
 
   // Decrease flush size, at least two cfs must be freed to not stall write.
   options.write_buffer_manager->SetFlushSize(50000);
   ASSERT_TRUE(Put(0, Key(1), DummyString(30000), wo).IsIncomplete());
 
-  ASSERT_OK(db2->ContinueBackgroundWork());  // Close wait on pending jobs.
+  ASSERT_OK(db2->ContinueBackgroundWork());  // Close waits on pending jobs.
+  // Thanks to `UnregisterDB`, we don't have to delete it to free up space.
   db2->Close();
   ASSERT_TRUE(Put(0, Key(1), DummyString(30000), wo).IsIncomplete());
 
@@ -271,11 +273,11 @@ TEST_P(DBWriteBufferManagerTest, DynamicFlushSize) {
     std::vector<port::Thread> threads;
     std::atomic<bool> ready{false};
     std::function<void(DB*)> write_db = [&](DB* db) {
-      ready = true;
       WriteOptions wopts;
       wopts.disableWAL = true;
       wopts.no_slowdown = true;
       ASSERT_TRUE(db->Put(wopts, Key(3), DummyString(1)).IsIncomplete());
+      ready = true;
       wopts.no_slowdown = false;
       ASSERT_OK(db->Put(wopts, Key(3), DummyString(1)));
     };

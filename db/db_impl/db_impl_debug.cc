@@ -328,6 +328,5 @@ void DBImpl::TEST_ClearBackgroundJobs() {
     cfd->UnrefAndTryDelete();
   }
 }
-
 }  // namespace ROCKSDB_NAMESPACE
 #endif  // NDEBUG

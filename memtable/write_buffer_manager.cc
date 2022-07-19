@@ -9,8 +9,6 @@
 
 #include "rocksdb/write_buffer_manager.h"
 
-#include <algorithm>
-
 #include "cache/cache_entry_roles.h"
 #include "cache/cache_reservation_manager.h"
 #include "db/db_impl/db_impl.h"
@@ -23,9 +21,7 @@ WriteBufferManager::WriteBufferManager(size_t _flush_size,
                                        std::shared_ptr<Cache> cache,
                                        float stall_ratio,
                                        bool flush_oldest_first)
-    : head_(nullptr),
-      num_sentinels_(0),
-      memory_used_(0),
+    : memory_used_(0),
       flush_size_(_flush_size),
       memory_active_(0),
       flush_oldest_first_(flush_oldest_first),
@@ -65,8 +61,8 @@ void WriteBufferManager::SetFlushSize(size_t new_size) {
   if (flush_size_.exchange(new_size, std::memory_order_relaxed) > new_size) {
     // Threshold is decreased. We must make sure all outstanding memtables
     // are flushed.
-    std::lock_guard<std::mutex> lock(head_mu_);
-    uint64_t max_retry = num_sentinels_;
+    std::lock_guard<std::mutex> lock(sentinels_mu_);
+    auto max_retry = sentinels_.size();
     while ((max_retry--) && ShouldFlush()) {
       MaybeFlushLocked();
     }
@@ -81,40 +77,24 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
   auto sentinel = std::make_shared<WriteBufferSentinel>();
   sentinel->db = db;
   sentinel->cf = cf;
-  std::lock_guard<std::mutex> lock(head_mu_);
+  std::lock_guard<std::mutex> lock(sentinels_mu_);
   MaybeFlushLocked();
-  if (head_ != nullptr) {
-    sentinel->next = head_;
-  }
-  head_ = sentinel;
-  num_sentinels_++;
+  sentinels_.push_back(sentinel);
 }
 
 void WriteBufferManager::UnregisterDB(DB* db) {
-  std::lock_guard<std::mutex> lock(head_mu_);
-  std::shared_ptr<WriteBufferSentinel>* current = &head_;
-  while (*current != nullptr) {
-    if ((*current)->db == db) {
-      *current = (*current)->next;
-      num_sentinels_--;
-    } else {
-      current = &((*current)->next);
-    }
-  }
+  std::lock_guard<std::mutex> lock(sentinels_mu_);
+  sentinels_.remove_if([=](const std::shared_ptr<WriteBufferSentinel>& s) {
+    return s->db == db;
+  });
   MaybeFlushLocked();
 }
 
 void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
-  std::lock_guard<std::mutex> lock(head_mu_);
-  std::shared_ptr<WriteBufferSentinel>* current = &head_;
-  while (*current != nullptr) {
-    if ((*current)->cf == cf) {
-      *current = (*current)->next;
-      num_sentinels_--;
-    } else {
-      current = &((*current)->next);
-    }
-  }
+  std::lock_guard<std::mutex> lock(sentinels_mu_);
+  sentinels_.remove_if([=](const std::shared_ptr<WriteBufferSentinel>& s) {
+    return s->cf == cf;
+  });
   MaybeFlushLocked();
 }
 
@@ -198,7 +178,6 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
   if (!ShouldFlush()) {
     return;
   }
-  WriteBufferSentinel* current = head_.get();
   uint64_t total_active_mem = 0;
   // We only flush at most one column family at a time.
   // This is enough to keep size under control except when flush_size is
@@ -206,12 +185,11 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
   WriteBufferSentinel* candidate = nullptr;
   uint64_t max_score = 0;
   uint64_t current_score = 0;
-  size_t num_sentinels = 0;
-  while (current != nullptr) {
+  for (auto& s : sentinels_) {
     uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
     uint64_t oldest_time = std::numeric_limits<uint64_t>::max();
-    current->db->GetApproximateActiveMemTableStats(
-        current->cf, &current_memory_bytes, &oldest_time);
+    s->db->GetApproximateActiveMemTableStats(s->cf, &current_memory_bytes,
+                                             &oldest_time);
     if (flush_oldest_first_) {
       // Convert oldest to highest score.
       current_score = std::numeric_limits<uint64_t>::max() - oldest_time;
@@ -219,14 +197,11 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
       current_score = current_memory_bytes;
     }
     if (current_score > max_score) {
-      candidate = current;
+      candidate = s.get();
       max_score = current_score;
     }
-    current = current->next.get();
     total_active_mem += current_memory_bytes;
-    num_sentinels++;
   }
-  assert(num_sentinels == num_sentinels_);
 
   if (total_active_mem > local_size) {
     FlushOptions flush_opts;
