@@ -1817,9 +1817,6 @@ class DBImpl : public DB {
   // REQUIRES: mutex locked and in write thread.
   Status SwitchWAL(WriteContext* write_context);
 
-  // REQUIRES: mutex locked and in write thread.
-  Status HandleWriteBufferManagerFlush(WriteContext* write_context);
-
   // REQUIRES: mutex locked
   Status PreprocessWrite(const WriteOptions& write_options,
                          LogContext* log_context, WriteContext* write_context);

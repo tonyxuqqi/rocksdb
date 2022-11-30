@@ -183,6 +183,7 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
   // This is enough to keep size under control except when flush_size is
   // dynamically decreased. That case is managed in `SetFlushSize`.
   WriteBufferSentinel* candidate = nullptr;
+  uint64_t candidate_size = 0;
   uint64_t max_score = 0;
   uint64_t current_score = 0;
   for (auto& s : sentinels_) {
@@ -199,21 +200,18 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
     if (current_score > max_score) {
       candidate = s.get();
       max_score = current_score;
+      candidate_size = current_memory_bytes;
     }
     total_active_mem += current_memory_bytes;
   }
 
-  if (total_active_mem > local_size) {
+  if (total_active_mem > local_size && candidate != nullptr) {
     FlushOptions flush_opts;
     flush_opts.allow_write_stall = true;
     flush_opts.wait = false;
-    if (candidate != nullptr) {
-      flush_opts._write_stopped = (candidate->db == this_db);
-      if (!flush_oldest_first_) {
-        flush_opts.min_size_to_flush = max_score - 1;
-      }
-      candidate->db->Flush(flush_opts, candidate->cf);
-    }
+    flush_opts._write_stopped = (candidate->db == this_db);
+    flush_opts.min_size_to_flush = candidate_size - 1;
+    candidate->db->Flush(flush_opts, candidate->cf);
   }
 }
 
