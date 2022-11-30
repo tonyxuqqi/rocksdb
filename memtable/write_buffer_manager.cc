@@ -12,6 +12,7 @@
 #include "cache/cache_entry_roles.h"
 #include "cache/cache_reservation_manager.h"
 #include "db/db_impl/db_impl.h"
+#include "logging/logging.h"
 #include "rocksdb/options.h"
 #include "rocksdb/status.h"
 #include "util/coding.h"
@@ -28,7 +29,8 @@ WriteBufferManager::WriteBufferManager(size_t _flush_size,
       allow_stall_(stall_ratio >= 1.0),
       stall_ratio_(stall_ratio),
       stall_active_(false),
-      cache_res_mgr_(nullptr) {
+      cache_res_mgr_(nullptr),
+      logger_(nullptr) {
 #ifndef ROCKSDB_LITE
   if (cache) {
     // Memtable's memory usage tends to fluctuate frequently
@@ -78,12 +80,19 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
   sentinel->db = db;
   sentinel->cf = cf;
   std::lock_guard<std::mutex> lock(sentinels_mu_);
+  if (!logger_) {
+    logger_ = db->GetDBOptions().info_log;
+  }
+  ROCKS_LOG_WARN(logger_, "WriteBufferManager::RegisterColumnFamily %s %s",
+                 db->GetName().c_str(), cf->GetName().c_str());
   MaybeFlushLocked();
   sentinels_.push_back(sentinel);
 }
 
 void WriteBufferManager::UnregisterDB(DB* db) {
   std::lock_guard<std::mutex> lock(sentinels_mu_);
+  ROCKS_LOG_WARN(logger_, "WriteBufferManager::UnregisterDB %s",
+                 db->GetName().c_str());
   sentinels_.remove_if([=](const std::shared_ptr<WriteBufferSentinel>& s) {
     return s->db == db;
   });
@@ -92,9 +101,15 @@ void WriteBufferManager::UnregisterDB(DB* db) {
 
 void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
   std::lock_guard<std::mutex> lock(sentinels_mu_);
-  sentinels_.remove_if([=](const std::shared_ptr<WriteBufferSentinel>& s) {
+  DB* db = nullptr;
+  sentinels_.remove_if([=, &db](const std::shared_ptr<WriteBufferSentinel>& s) {
+    db = s->db;
     return s->cf == cf;
   });
+  if (db) {
+    ROCKS_LOG_WARN(logger_, "WriteBufferManager::UnregisterCF %s %s",
+                   db->GetName().c_str(), cf->GetName().c_str());
+  }
   MaybeFlushLocked();
 }
 
@@ -203,6 +218,13 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
       candidate_size = current_memory_bytes;
     }
     total_active_mem += current_memory_bytes;
+  }
+  if (logger_) {
+    ROCKS_LOG_WARN(
+        logger_, "WriteBufferManager::MaybeFlushLocked %luMB %luMB %d",
+        memory_active_.load(std::memory_order_relaxed) / 1024 / 1024,
+        total_active_mem / 1024 / 1024,
+        (int)(total_active_mem > local_size && candidate != nullptr));
   }
 
   if (total_active_mem > local_size && candidate != nullptr) {

@@ -205,6 +205,8 @@ class WriteBufferManager final {
   // Protects cache_res_mgr_
   std::mutex cache_res_mgr_mu_;
 
+  std::shared_ptr<Logger> logger_;
+
   void ReserveMemWithCache(size_t mem);
   void FreeMemWithCache(size_t mem);
 };
