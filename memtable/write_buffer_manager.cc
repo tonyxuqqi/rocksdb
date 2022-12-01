@@ -236,13 +236,13 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
   }
   if (logger_) {
     ROCKS_LOG_WARN(
-        logger_, "WriteBufferManager::MaybeFlushLocked %luMB %luMB %d",
+        logger_, "WriteBufferManager::MaybeFlushLocked %luMB %luMB %d %d",
         memory_active_.load(std::memory_order_relaxed) / 1024 / 1024,
-        total_active_mem / 1024 / 1024,
-        (int)(total_active_mem > local_size && candidate != nullptr));
+        total_active_mem / 1024 / 1024, (int)(total_active_mem > local_size),
+        (int)(candidate != nullptr));
   }
 
-  if (total_active_mem > local_size && candidate != nullptr) {
+  if (candidate != nullptr) {
     FlushOptions flush_opts;
     flush_opts.allow_write_stall = true;
     flush_opts.wait = false;
