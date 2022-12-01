@@ -83,25 +83,34 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
   if (!logger_) {
     logger_ = db->GetDBOptions().info_log;
   }
-  ROCKS_LOG_WARN(logger_, "WriteBufferManager::RegisterColumnFamily %s %s",
-                 db->GetName().c_str(), cf->GetName().c_str());
+  ROCKS_LOG_WARN(logger_,
+                 "WriteBufferManager::RegisterColumnFamily %s %s (current list "
+                 "%lu) (used %luMB)",
+                 db->GetName().c_str(), cf->GetName().c_str(),
+                 sentinels_.size(),
+                 memory_active_.load(std::memory_order_relaxed) / 1024 / 1024);
   MaybeFlushLocked();
   sentinels_.push_back(sentinel);
 }
 
 void WriteBufferManager::UnregisterDB(DB* db) {
   std::lock_guard<std::mutex> lock(sentinels_mu_);
-  ROCKS_LOG_WARN(logger_, "WriteBufferManager::UnregisterDB %s",
-                 db->GetName().c_str());
+  auto before = sentinels_.size();
   sentinels_.remove_if([=](const std::shared_ptr<WriteBufferSentinel>& s) {
     return s->db == db;
   });
+  ROCKS_LOG_WARN(logger_,
+                 "WriteBufferManager::UnregisterDB %s (list before %lu after "
+                 "%lu) (used %luMB)",
+                 db->GetName().c_str(), before, sentinels_.size(),
+                 memory_active_.load(std::memory_order_relaxed) / 1024 / 1024);
   MaybeFlushLocked();
 }
 
 void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
   std::lock_guard<std::mutex> lock(sentinels_mu_);
   DB* db = nullptr;
+  auto before = sentinels_.size();
   sentinels_.remove_if([=, &db](const std::shared_ptr<WriteBufferSentinel>& s) {
     if (s->cf == cf) {
       db = s->db;
@@ -109,8 +118,12 @@ void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
     return s->cf == cf;
   });
   if (db) {
-    ROCKS_LOG_WARN(logger_, "WriteBufferManager::UnregisterCF %s %s",
-                   db->GetName().c_str(), cf->GetName().c_str());
+    ROCKS_LOG_WARN(
+        logger_,
+        "WriteBufferManager::UnregisterCF %s %s (list before %lu after %lu) "
+        "(used %luMB)",
+        db->GetName().c_str(), cf->GetName().c_str(), before, sentinels_.size(),
+        memory_active_.load(std::memory_order_relaxed) / 1024 / 1024);
   }
   MaybeFlushLocked();
 }
