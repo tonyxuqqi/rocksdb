@@ -103,7 +103,9 @@ void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
   std::lock_guard<std::mutex> lock(sentinels_mu_);
   DB* db = nullptr;
   sentinels_.remove_if([=, &db](const std::shared_ptr<WriteBufferSentinel>& s) {
-    db = s->db;
+    if (s->cf == cf) {
+      db = s->db;
+    }
     return s->cf == cf;
   });
   if (db) {
