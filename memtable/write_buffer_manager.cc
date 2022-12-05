@@ -17,6 +17,8 @@
 #include "rocksdb/status.h"
 #include "util/coding.h"
 
+#include <ctime>
+
 namespace ROCKSDB_NAMESPACE {
 WriteBufferManager::WriteBufferManager(size_t _flush_size,
                                        std::shared_ptr<Cache> cache,
@@ -214,8 +216,10 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
   // dynamically decreased. That case is managed in `SetFlushSize`.
   WriteBufferSentinel* candidate = nullptr;
   uint64_t candidate_size = 0;
+  uint64_t candidate_age = 0;
   uint64_t max_score = 0;
   uint64_t current_score = 0;
+  time_t now = static_cast<uint64_t>((int64_t)time(nullptr));
   for (auto& s : sentinels_) {
     uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
     uint64_t oldest_time = std::numeric_limits<uint64_t>::max();
@@ -231,18 +235,21 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
       candidate = s.get();
       max_score = current_score;
       candidate_size = current_memory_bytes;
+      candidate_age = now - oldest_time;
     }
     total_active_mem += current_memory_bytes;
   }
-  if (logger_) {
-    ROCKS_LOG_WARN(
-        logger_, "WriteBufferManager::MaybeFlushLocked %luMB %luMB %d %d",
-        memory_active_.load(std::memory_order_relaxed) / 1024 / 1024,
-        total_active_mem / 1024 / 1024, (int)(total_active_mem > local_size),
-        (int)(candidate != nullptr));
-  }
 
   if (candidate != nullptr) {
+    if (logger_) {
+      ROCKS_LOG_WARN(
+          logger_,
+          "WriteBufferManager::MaybeFlushLocked sum=%luMB approx-sum=%luMB "
+          "size=%lfMB age=%lfm",
+          memory_active_.load(std::memory_order_relaxed) / 1024 / 1024,
+          total_active_mem / 1024 / 1024, candidate_size / 1024.0 / 1024,
+          candidate_age / 60.0);
+    }
     FlushOptions flush_opts;
     flush_opts.allow_write_stall = true;
     flush_opts.wait = false;
