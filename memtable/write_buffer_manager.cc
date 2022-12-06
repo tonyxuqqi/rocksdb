@@ -240,7 +240,7 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
     total_active_mem += current_memory_bytes;
   }
 
-  if (candidate != nullptr) {
+  if (total_active_mem >= flush_size() && candidate != nullptr) {
     if (logger_) {
       ROCKS_LOG_WARN(
           logger_,
