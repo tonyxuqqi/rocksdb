@@ -251,10 +251,11 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
       ROCKS_LOG_WARN(
           logger_,
           "WriteBufferManager::MaybeFlushLocked sum=%luMB approx-sum=%luMB "
-          "size=%lfMB age=%lfm",
+          "total=%luMB size=%lfMB age=%lfm",
           memory_active_.load(std::memory_order_relaxed) / 1024 / 1024,
-          total_active_mem / 1024 / 1024, candidate_size / 1024.0 / 1024,
-          candidate_age / 60.0);
+          total_active_mem / 1024 / 1024,
+          memory_used_.load(std::memory_order_relaxed) / 1024 / 1024,
+          candidate_size / 1024.0 / 1024, candidate_age / 60.0);
     }
     FlushOptions flush_opts;
     flush_opts.allow_write_stall = true;

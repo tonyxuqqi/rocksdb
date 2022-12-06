@@ -72,6 +72,10 @@ ColumnFamilyHandleImpl::~ColumnFamilyHandleImpl() {
       if (dropped) {
         db_->FindObsoleteFiles(&job_context, false, true);
       }
+    } else {
+      ROCKS_LOG_WARN(db_->immutable_db_options().logger,
+                     "Something is referencing cfd.");
+      assert(false);
     }
     mutex_->Unlock();
     if (job_context.HaveSomethingToDelete()) {
