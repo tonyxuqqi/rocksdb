@@ -177,7 +177,13 @@ void WriteBufferManager::FreeMem(size_t mem) {
   if (cache_res_mgr_ != nullptr) {
     FreeMemWithCache(mem);
   } else if (flush_size() > 0) {
-    memory_used_.fetch_sub(mem, std::memory_order_relaxed);
+    auto used = memory_used_.fetch_sub(mem, std::memory_order_relaxed);
+    if (used < mutable_memtable_memory_usage()) {
+      ROCKS_LOG_WARN(
+          logger_,
+          "WriteBufferManager::ActiveMemoryLeaked total=%luMB active=%luMB ",
+          used, mutable_memtable_memory_usage());
+    }
   }
   // Check if stall is active and can be ended.
   MaybeEndWriteStall();
