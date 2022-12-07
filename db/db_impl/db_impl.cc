@@ -258,6 +258,8 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
   SetDbSessionId();
   assert(!db_session_id_.empty());
 
+  ROCKS_LOG_WARN(immutable_db_options_.info_log,
+                 "WriteBufferManager::NewDBImpl %s", dbname_.c_str());
   versions_.reset(new VersionSet(dbname_, &immutable_db_options_, file_options_,
                                  table_cache_.get(), write_buffer_manager_,
                                  &write_controller_, &block_cache_tracer_,
@@ -740,6 +742,8 @@ DBImpl::~DBImpl() {
     closing_status_ = CloseHelper();
     closing_status_.PermitUncheckedError();
   }
+  ROCKS_LOG_WARN(immutable_db_options_.info_log,
+                 "WriteBufferManager::DestructDBImpl %s", GetName().c_str());
 }
 
 void DBImpl::MaybeIgnoreError(Status* s) const {
