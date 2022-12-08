@@ -2685,9 +2685,6 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
   assert(handle != nullptr);
   Status s = CreateColumnFamilyImpl(cf_options, column_family, handle);
   if (s.ok()) {
-    if (write_buffer_manager_) {
-      write_buffer_manager_->RegisterColumnFamily(this, *handle);
-    }
     s = WriteOptionsFile(true /*need_mutex_lock*/,
                          true /*need_enter_write_thread*/);
   }
@@ -2710,9 +2707,6 @@ Status DBImpl::CreateColumnFamilies(
       break;
     }
     handles->push_back(handle);
-    if (write_buffer_manager_) {
-      write_buffer_manager_->RegisterColumnFamily(this, handle);
-    }
     success_once = true;
   }
   if (success_once) {
@@ -2739,9 +2733,6 @@ Status DBImpl::CreateColumnFamilies(
                                column_families[i].name, &handle);
     if (!s.ok()) {
       break;
-    }
-    if (write_buffer_manager_) {
-      write_buffer_manager_->RegisterColumnFamily(this, handle);
     }
     handles->push_back(handle);
     success_once = true;
@@ -2838,6 +2829,9 @@ Status DBImpl::CreateColumnFamilyImpl(const ColumnFamilyOptions& cf_options,
   sv_context.Clean();
   // this is outside the mutex
   if (s.ok()) {
+    if (write_buffer_manager_ != nullptr) {
+      write_buffer_manager_->RegisterColumnFamily(this, *handle);
+    }
     NewThreadStatusCfInfo(
         static_cast_with_check<ColumnFamilyHandleImpl>(*handle)->cfd());
   }
