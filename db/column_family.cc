@@ -429,7 +429,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 int SuperVersion::dummy = 0;
 void* const SuperVersion::kSVInUse = &SuperVersion::dummy;
 void* const SuperVersion::kSVObsolete = nullptr;
-std::atomic<uint64_t> SuperVersion::_in_use;
+std::atomic<size_t> SuperVersion::_in_use;
 
 SuperVersion::~SuperVersion() {
   for (auto td : to_delete) {
