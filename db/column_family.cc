@@ -652,8 +652,12 @@ ColumnFamilyData::~ColumnFamilyData() {
     assert(deleted);
   }
 
+  ROCKS_LOG_WARN(ioptions_.logger, "WriteBufferManager::DestructCFD %s",
+                 GetDbPaths()[0].c_str());
   if (mem_ != nullptr) {
-    delete mem_->Unref();
+    auto mem = mem_->Unref();
+    assert(mem != nullptr);
+    delete mem;
   }
   autovector<MemTable*> to_delete;
   imm_.current()->Unref(&to_delete);

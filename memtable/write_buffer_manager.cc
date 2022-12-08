@@ -18,6 +18,7 @@
 #include "util/coding.h"
 
 #include <ctime>
+#include <iostream>
 
 namespace ROCKSDB_NAMESPACE {
 WriteBufferManager::WriteBufferManager(size_t _flush_size,
@@ -245,6 +246,12 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
     }
     total_active_mem += current_memory_bytes;
   }
+
+  // if (!this_db) {
+  //   std::cout << "approx = " << total_active_mem
+  //             << ", atomic = " << memory_active_.load(std::memory_order_relaxed)
+  //             << std::endl;
+  // }
 
   if (total_active_mem >= flush_size() && candidate != nullptr) {
     if (logger_) {
