@@ -66,7 +66,7 @@ void WriteBufferManager::SetFlushSize(size_t new_size) {
   if (flush_size_.exchange(new_size, std::memory_order_relaxed) > new_size) {
     // Threshold is decreased. We must make sure all outstanding memtables
     // are flushed.
-    std::lock_guard<std::mutex> lock(sentinels_mu_);
+    std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
     auto max_retry = sentinels_.size();
     while ((max_retry--) && ShouldFlush()) {
       MaybeFlushLocked();
@@ -85,7 +85,7 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
   sentinel->deleted = false;
   auto cfd = static_cast<ColumnFamilyHandleImpl*>(cf)->cfd();
   sentinel->cfd = cfd;
-  std::lock_guard<std::mutex> lock(sentinels_mu_);
+  std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
   cfd_names_[(uint64_t)cfd] = cfd->GetLongName();
   if (!logger_) {
     logger_ = db->GetDBOptions().info_log;
@@ -101,7 +101,7 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
 }
 
 void WriteBufferManager::UnregisterDB(DB* db) {
-  std::lock_guard<std::mutex> lock(sentinels_mu_);
+  std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
   auto before = sentinels_.size();
   sentinels_.remove_if([&](const std::shared_ptr<WriteBufferSentinel>& s) {
     auto match = s->db == db;
@@ -125,7 +125,7 @@ void WriteBufferManager::UnregisterDB(DB* db) {
 }
 
 void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
-  std::lock_guard<std::mutex> lock(sentinels_mu_);
+  std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
   DB* db = nullptr;
   auto before = sentinels_.size();
   sentinels_.remove_if([=, &db](const std::shared_ptr<WriteBufferSentinel>& s) {
@@ -156,7 +156,7 @@ void WriteBufferManager::ReserveMem(size_t mem, uint64_t key) {
   }
   if (local_size > 0) {
     memory_active_.fetch_add(mem, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(sentinels_mu_);
+    std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
     active_mem_by_cfd_[key] += mem;
     // std::cout << "reserve " << active_mem_by_cfd_[key] << std::endl;
   }
@@ -190,7 +190,7 @@ void WriteBufferManager::ReserveMemWithCache(size_t mem) {
 void WriteBufferManager::ScheduleFreeMem(size_t mem, uint64_t key) {
   if (flush_size() > 0) {
     memory_active_.fetch_sub(mem, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(sentinels_mu_);
+    std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
     active_mem_by_cfd_[key] -= mem;
   }
 }

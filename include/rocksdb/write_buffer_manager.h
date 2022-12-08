@@ -182,7 +182,7 @@ class WriteBufferManager final {
   };
   // Protected by `sentinels_mu_`.
   std::list<std::shared_ptr<WriteBufferSentinel>> sentinels_;
-  std::mutex sentinels_mu_;
+  std::recursive_mutex sentinels_mu_;
 
   // Shared by flush_size limit and cache charging.
   // When cache charging is enabled, this is updated under cache_res_mgr_mu_.
