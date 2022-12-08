@@ -232,6 +232,7 @@ struct SuperVersion {
   static int dummy;
   static void* const kSVInUse;
   static void* const kSVObsolete;
+  static std::atomic<uint64_t> _in_use;
 
  private:
   std::atomic<uint32_t> refs;

@@ -260,6 +260,8 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
 
   ROCKS_LOG_WARN(immutable_db_options_.info_log,
                  "WriteBufferManager::NewDBImpl %s", dbname_.c_str());
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "NewDBImpl SuperVersionCount %llu", SuperVersion::_in_use.load(std::memory_order_relaxed));
   versions_.reset(new VersionSet(dbname_, &immutable_db_options_, file_options_,
                                  table_cache_.get(), write_buffer_manager_,
                                  &write_controller_, &block_cache_tracer_,
@@ -744,6 +746,8 @@ DBImpl::~DBImpl() {
   }
   ROCKS_LOG_WARN(immutable_db_options_.info_log,
                  "WriteBufferManager::DestructDBImpl %s", GetName().c_str());
+  ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                 "DestructDBImpl SuperVersionCount %llu", SuperVersion::_in_use.load(std::memory_order_relaxed));
 }
 
 void DBImpl::MaybeIgnoreError(Status* s) const {

@@ -429,6 +429,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 int SuperVersion::dummy = 0;
 void* const SuperVersion::kSVInUse = &SuperVersion::dummy;
 void* const SuperVersion::kSVObsolete = nullptr;
+std::atomic<uint64_t> SuperVersion::_in_use;
 
 SuperVersion::~SuperVersion() {
   for (auto td : to_delete) {
@@ -463,6 +464,7 @@ void SuperVersion::Cleanup() {
   }
   current->Unref();
   cfd->UnrefAndTryDelete();
+  _in_use.fetch_sub(1, std::memory_order_relaxed);
 }
 
 void SuperVersion::Init(ColumnFamilyData* new_cfd, MemTable* new_mem,
@@ -476,6 +478,7 @@ void SuperVersion::Init(ColumnFamilyData* new_cfd, MemTable* new_mem,
   imm->Ref();
   current->Ref();
   refs.store(1, std::memory_order_relaxed);
+  _in_use.fetch_add(1, std::memory_order_relaxed);
 }
 
 namespace {
