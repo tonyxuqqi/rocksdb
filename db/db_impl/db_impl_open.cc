@@ -1686,8 +1686,10 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
         if (cfd != nullptr) {
           handles->push_back(
               new ColumnFamilyHandleImpl(cfd, impl, &impl->mutex_));
+          impl->mutex_.Unlock();
           impl->write_buffer_manager_->RegisterColumnFamily(impl,
                                                             handles->back());
+          impl->mutex_.Lock();
           impl->NewThreadStatusCfInfo(cfd);
         } else {
           if (db_options.create_missing_column_families) {
