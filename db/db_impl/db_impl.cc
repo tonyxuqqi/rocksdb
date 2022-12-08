@@ -3636,7 +3636,7 @@ void DBImpl::GetApproximateActiveMemTableStats(
     uint64_t* const oldest_key_time) {
   auto* cf_impl = static_cast<ColumnFamilyHandleImpl*>(column_family);
   if (memory_bytes) {
-    *memory_bytes = cf_impl->cfd()->mem()->ApproximateMemoryUsageFast();
+    *memory_bytes = cf_impl->cfd()->mem()->ApproximateMemoryUsage();
   }
   if (oldest_key_time) {
     *oldest_key_time = cf_impl->cfd()->mem()->ApproximateOldestKeyTime();
