@@ -33,7 +33,8 @@ WriteBufferManager::WriteBufferManager(size_t _flush_size,
       stall_ratio_(stall_ratio),
       stall_active_(false),
       cache_res_mgr_(nullptr),
-      logger_(nullptr) {
+      logger_(nullptr),
+      start_time_(std::chrono::system_clock::now()) {
 #ifndef ROCKSDB_LITE
   if (cache) {
     // Memtable's memory usage tends to fluctuate frequently
@@ -158,6 +159,10 @@ void WriteBufferManager::ReserveMem(size_t mem, uint64_t key) {
     memory_active_.fetch_add(mem, std::memory_order_relaxed);
     std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
     active_mem_by_cfd_[key] += mem;
+    if (cfd_names_.count(key) == 0) {
+      ROCKS_LOG_WARN(
+          logger_, "WriteBufferManager::Leak2 reserve mem but not registered");
+    }
     // std::cout << "reserve " << active_mem_by_cfd_[key] << std::endl;
   }
 }
@@ -237,6 +242,41 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
   size_t local_size = flush_size();
   if (!ShouldFlush()) {
     return;
+  }
+  {
+    auto now = std::chrono::system_clock::now();
+    std::chrono::duration<double> duration = now - start_time_;
+    if (duration.count() > 600.0) {
+      start_time_ = now;
+      auto map2 = active_mem_by_cfd_;
+      uint64_t approx_sum = 0;
+      uint64_t map_sum = 0;
+      for (auto& s : sentinels_) {
+        if (!s->deleted) {
+          uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
+          uint64_t oldest_time = std::numeric_limits<uint64_t>::max();
+          s->db->GetApproximateActiveMemTableStats(s->cf, &current_memory_bytes,
+                                                  &oldest_time);
+          ROCKS_LOG_WARN(
+              logger_, "WriteBufferManager::Report map=%luKB approx=%luKB",
+              map2[(uint64_t)s->cfd] / 1024, current_memory_bytes / 1024);
+          map_sum += map2[(uint64_t)s->cfd];
+          map2.erase((uint64_t)s->cfd);
+          approx_sum += current_memory_bytes;
+        }
+      }
+      uint64_t leaked_map_sum = 0;
+      for (auto& p : map2) {
+        ROCKS_LOG_WARN(logger_,
+                      "WriteBufferManager::Report missing in list %s %luKB",
+                      cfd_names_[p.first].c_str(), p.second / 1024);
+        leaked_map_sum += p.second;
+      }
+      ROCKS_LOG_WARN(
+          logger_,
+          "WriteBufferManager::Report approx=%luKB map=%luKB map-leaked=%luKB",
+          approx_sum / 1024, map_sum / 1024, leaked_map_sum / 1024);
+    }
   }
   uint64_t total_active_mem = 0;
   // We only flush at most one column family at a time.

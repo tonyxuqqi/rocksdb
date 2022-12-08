@@ -20,6 +20,8 @@
 
 #include "rocksdb/cache.h"
 
+#include <chrono>
+
 namespace ROCKSDB_NAMESPACE {
 class CacheReservationManager;
 class DB;
@@ -211,6 +213,8 @@ class WriteBufferManager final {
 
   std::unordered_map<uint64_t, uint64_t> active_mem_by_cfd_;
   std::unordered_map<uint64_t, std::string> cfd_names_;
+
+  std::chrono::time_point<std::chrono::system_clock> start_time_;
 
   void ReserveMemWithCache(size_t mem);
   void FreeMemWithCache(size_t mem);
