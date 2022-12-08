@@ -160,8 +160,11 @@ void WriteBufferManager::ReserveMem(size_t mem, uint64_t key) {
     std::lock_guard<std::recursive_mutex> lock(sentinels_mu_);
     active_mem_by_cfd_[key] += mem;
     if (cfd_names_.count(key) == 0) {
+      auto cfd = static_cast<ColumnFamilyData*>((void*)key);
       ROCKS_LOG_WARN(
-          logger_, "WriteBufferManager::Leak2 reserve mem but not registered");
+          logger_,
+          "WriteBufferManager::Leak2 reserve mem but not registered %s",
+          cfd->GetLongName().c_str());
     }
     // std::cout << "reserve " << active_mem_by_cfd_[key] << std::endl;
   }
