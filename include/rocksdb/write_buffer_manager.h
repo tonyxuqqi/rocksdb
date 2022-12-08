@@ -114,11 +114,11 @@ class WriteBufferManager final {
   // Must be called not holding db mutex and not inside write thread.
   void UnregisterColumnFamily(ColumnFamilyHandle* cf);
 
-  void ReserveMem(size_t mem);
+  void ReserveMem(size_t mem, uint64_t key);
 
   // We are in the process of freeing `mem` bytes, so it is not considered
   // when checking the soft limit.
-  void ScheduleFreeMem(size_t mem);
+  void ScheduleFreeMem(size_t mem, uint64_t key);
 
   void FreeMem(size_t mem);
 
@@ -177,6 +177,8 @@ class WriteBufferManager final {
   struct WriteBufferSentinel {
     DB* db;
     ColumnFamilyHandle* cf;
+    void* cfd;
+    bool deleted;
   };
   // Protected by `sentinels_mu_`.
   std::list<std::shared_ptr<WriteBufferSentinel>> sentinels_;
@@ -206,6 +208,9 @@ class WriteBufferManager final {
   std::mutex cache_res_mgr_mu_;
 
   std::shared_ptr<Logger> logger_;
+
+  std::unordered_map<uint64_t, uint64_t> active_mem_by_cfd_;
+  std::unordered_map<uint64_t, std::string> cfd_names_;
 
   void ReserveMemWithCache(size_t mem);
   void FreeMemWithCache(size_t mem);

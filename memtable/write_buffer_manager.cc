@@ -82,7 +82,11 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
   auto sentinel = std::make_shared<WriteBufferSentinel>();
   sentinel->db = db;
   sentinel->cf = cf;
+  sentinel->deleted = false;
+  auto cfd = static_cast<ColumnFamilyHandleImpl*>(cf)->cfd();
+  sentinel->cfd = cfd;
   std::lock_guard<std::mutex> lock(sentinels_mu_);
+  cfd_names_[(uint64_t)cfd] = cfd->GetLongName();
   if (!logger_) {
     logger_ = db->GetDBOptions().info_log;
   }
@@ -99,8 +103,18 @@ void WriteBufferManager::RegisterColumnFamily(DB* db, ColumnFamilyHandle* cf) {
 void WriteBufferManager::UnregisterDB(DB* db) {
   std::lock_guard<std::mutex> lock(sentinels_mu_);
   auto before = sentinels_.size();
-  sentinels_.remove_if([=](const std::shared_ptr<WriteBufferSentinel>& s) {
-    return s->db == db;
+  sentinels_.remove_if([&](const std::shared_ptr<WriteBufferSentinel>& s) {
+    auto match = s->db == db;
+    if (match) {
+      auto key = (uint64_t)(s->cfd);
+      if (active_mem_by_cfd_[key] > 0) {
+        ROCKS_LOG_WARN(logger_, "WriteBufferManager::Leak %s %lu",
+                       cfd_names_[key].c_str(), active_mem_by_cfd_[key]);
+      }
+      // std::cout << "leak " << active_mem_by_cfd_[key] << std::endl;
+    }
+    return match;
+    // return s->db == db;
   });
   ROCKS_LOG_WARN(logger_,
                  "WriteBufferManager::UnregisterDB %s (list before %lu after "
@@ -117,8 +131,10 @@ void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
   sentinels_.remove_if([=, &db](const std::shared_ptr<WriteBufferSentinel>& s) {
     if (s->cf == cf) {
       db = s->db;
+      s->deleted = true;
     }
-    return s->cf == cf;
+    // return s->cf == cf;
+    return false;
   });
   if (db) {
     ROCKS_LOG_WARN(
@@ -131,7 +147,7 @@ void WriteBufferManager::UnregisterColumnFamily(ColumnFamilyHandle* cf) {
   MaybeFlushLocked();
 }
 
-void WriteBufferManager::ReserveMem(size_t mem) {
+void WriteBufferManager::ReserveMem(size_t mem, uint64_t key) {
   size_t local_size = flush_size();
   if (cache_res_mgr_ != nullptr) {
     ReserveMemWithCache(mem);
@@ -140,6 +156,9 @@ void WriteBufferManager::ReserveMem(size_t mem) {
   }
   if (local_size > 0) {
     memory_active_.fetch_add(mem, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(sentinels_mu_);
+    active_mem_by_cfd_[key] += mem;
+    // std::cout << "reserve " << active_mem_by_cfd_[key] << std::endl;
   }
 }
 
@@ -168,9 +187,11 @@ void WriteBufferManager::ReserveMemWithCache(size_t mem) {
 #endif  // ROCKSDB_LITE
 }
 
-void WriteBufferManager::ScheduleFreeMem(size_t mem) {
+void WriteBufferManager::ScheduleFreeMem(size_t mem, uint64_t key) {
   if (flush_size() > 0) {
     memory_active_.fetch_sub(mem, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(sentinels_mu_);
+    active_mem_by_cfd_[key] -= mem;
   }
 }
 
@@ -228,6 +249,9 @@ void WriteBufferManager::MaybeFlushLocked(DB* this_db) {
   uint64_t current_score = 0;
   time_t now = static_cast<uint64_t>((int64_t)time(nullptr));
   for (auto& s : sentinels_) {
+    if (s->deleted) {
+      continue;
+    }
     uint64_t current_memory_bytes = std::numeric_limits<uint64_t>::max();
     uint64_t oldest_time = std::numeric_limits<uint64_t>::max();
     s->db->GetApproximateActiveMemTableStats(s->cf, &current_memory_bytes,

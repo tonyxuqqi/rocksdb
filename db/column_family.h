@@ -270,6 +270,7 @@ class ColumnFamilyData {
   uint32_t GetID() const { return id_; }
   // thread-safe
   const std::string& GetName() const { return name_; }
+  std::string GetLongName() const { return GetDbPaths()[0] + name_; }
 
   // Ref() can only be called from a context where the caller can guarantee
   // that ColumnFamilyData is alive (while holding a non-zero ref already,

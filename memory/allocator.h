@@ -32,7 +32,7 @@ class Allocator {
 
 class AllocTracker {
  public:
-  explicit AllocTracker(WriteBufferManager* write_buffer_manager);
+  explicit AllocTracker(WriteBufferManager* write_buffer_manager, uint64_t key);
   // No copying allowed
   AllocTracker(const AllocTracker&) = delete;
   void operator=(const AllocTracker&) = delete;
@@ -52,6 +52,7 @@ class AllocTracker {
   std::atomic<size_t> bytes_allocated_;
   bool done_allocating_;
   bool freed_;
+  uint64_t key_;
 };
 
 }  // namespace ROCKSDB_NAMESPACE

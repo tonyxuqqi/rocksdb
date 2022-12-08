@@ -14,11 +14,13 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-AllocTracker::AllocTracker(WriteBufferManager* write_buffer_manager)
+AllocTracker::AllocTracker(WriteBufferManager* write_buffer_manager,
+                           uint64_t key)
     : write_buffer_manager_(write_buffer_manager),
       bytes_allocated_(0),
       done_allocating_(false),
-      freed_(false) {}
+      freed_(false),
+      key_(key) {}
 
 AllocTracker::~AllocTracker() { FreeMem(); }
 
@@ -26,7 +28,7 @@ void AllocTracker::Allocate(size_t bytes) {
   assert(write_buffer_manager_ != nullptr);
   if (write_buffer_manager_->enabled()) {
     bytes_allocated_.fetch_add(bytes, std::memory_order_relaxed);
-    write_buffer_manager_->ReserveMem(bytes);
+    write_buffer_manager_->ReserveMem(bytes, key_);
   }
 }
 
@@ -34,7 +36,7 @@ void AllocTracker::DoneAllocating() {
   if (write_buffer_manager_ != nullptr && !done_allocating_) {
     if (write_buffer_manager_->enabled()) {
       write_buffer_manager_->ScheduleFreeMem(
-          bytes_allocated_.load(std::memory_order_relaxed));
+          bytes_allocated_.load(std::memory_order_relaxed), key_);
     } else {
       assert(bytes_allocated_.load(std::memory_order_relaxed) == 0);
     }

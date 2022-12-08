@@ -69,12 +69,13 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
                    const ImmutableOptions& ioptions,
                    const MutableCFOptions& mutable_cf_options,
                    WriteBufferManager* write_buffer_manager,
-                   SequenceNumber latest_seq, uint32_t column_family_id)
+                   SequenceNumber latest_seq, uint32_t column_family_id,
+                   uint64_t key)
     : comparator_(cmp),
       moptions_(ioptions, mutable_cf_options),
       refs_(0),
       kArenaBlockSize(OptimizeBlockSize(moptions_.arena_block_size)),
-      mem_tracker_(write_buffer_manager),
+      mem_tracker_(write_buffer_manager, key),
       arena_(
           moptions_.arena_block_size,
           (write_buffer_manager != nullptr && (write_buffer_manager->enabled()))

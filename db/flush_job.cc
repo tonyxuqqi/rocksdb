@@ -443,7 +443,7 @@ Status FlushJob::MemPurge() {
 
     new_mem = new MemTable((cfd_->internal_comparator()), *(cfd_->ioptions()),
                            mutable_cf_options_, cfd_->write_buffer_mgr(),
-                           earliest_seqno, cfd_->GetID());
+                           earliest_seqno, cfd_->GetID(), (uint64_t)cfd_);
     assert(new_mem != nullptr);
 
     Env* env = db_options_.env;
