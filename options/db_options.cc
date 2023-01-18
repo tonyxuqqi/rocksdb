@@ -968,7 +968,7 @@ MutableDBOptions::MutableDBOptions()
       delete_obsolete_files_period_micros(6ULL * 60 * 60 * 1000000),
       stats_dump_period_sec(600),
       stats_persist_period_sec(600),
-      stats_history_buffer_size(1024 * 1024),
+      stats_history_buffer_size(1024),
       max_open_files(-1),
       bytes_per_sync(0),
       wal_bytes_per_sync(0),
