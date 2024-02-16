@@ -1493,6 +1493,8 @@ void DBImpl::MarkLogsSynced(uint64_t up_to, bool synced_dir,
           wal.GetPreSyncSize() > 0) {
         synced_wals->AddWal(wal.number, WalMetadata(wal.GetPreSyncSize()));
       }
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "deleting log %" PRIu64 " from logs_\n", wal.number);
       logs_to_free_.push_back(wal.ReleaseWriter());
       it = logs_.erase(it);
     } else {
