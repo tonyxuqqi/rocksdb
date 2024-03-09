@@ -1561,8 +1561,8 @@ IOStatus DBImpl::WriteToWAL(const WriteThread::WriteGroup& write_group,
       if (log_writer->get_log_number() == log.number) {
         if (log.IsSyncing()) {
           ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                         "WAL is being Syncing and writting: [%" PRIu64 "",
-                         log_writer->get_log_number());
+                         "WAL is being Syncing and writting: [%" PRIu64 ", %" PRIu64 "]",
+                         log_writer->get_log_number(), logs_.size());
         }
         break;
       }
