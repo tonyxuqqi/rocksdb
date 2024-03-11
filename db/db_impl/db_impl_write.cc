@@ -1459,6 +1459,11 @@ IOStatus DBImpl::WriteToWAL(const WriteBatch& merged_batch,
   total_log_size_ += log_entry.size();
   log_file_number_size.AddSize(*log_size);
   log_empty_ = false;
+  if (log_writer->get_log_number() != logs_.back().number) {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "Not writing to latest WAL: [%" PRIu64 ", %" PRIu64 "]",
+                   log_writer->get_log_number(), logs_.back().number);
+  }
   return io_s;
 }
 
