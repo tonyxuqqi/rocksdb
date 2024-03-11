@@ -293,6 +293,9 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
                        earliest.number);
         log_recycle_files_.push_back(earliest.number);
       } else {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                       "deleting WAL log %" PRIu64 "\n",
+                       earliest.number);
         job_context->log_delete_files.push_back(earliest.number);
       }
       if (job_context->size_log_to_delete == 0) {
@@ -317,6 +320,8 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
         // logs_ could have changed while we were waiting.
         continue;
       }
+      ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                     "deleting log %" PRIu64 " from logs_\n", log.number);
       logs_to_free_.push_back(log.ReleaseWriter());
       logs_.pop_front();
     }
@@ -491,6 +496,8 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
   // Close WALs before trying to delete them.
   for (const auto w : state.logs_to_free) {
     // TODO: maybe check the return value of Close.
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "Close log %" PRIu64 " from logs_\n", w->get_log_number());
     auto s = w->Close();
     s.PermitUncheckedError();
   }
