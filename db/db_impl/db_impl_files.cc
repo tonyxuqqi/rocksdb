@@ -293,6 +293,9 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
                        earliest.number);
         log_recycle_files_.push_back(earliest.number);
       } else {
+        ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                       "deleting WAL log %" PRIu64 "\n",
+                       earliest.number);
         job_context->log_delete_files.push_back(earliest.number);
       }
       if (job_context->size_log_to_delete == 0) {
