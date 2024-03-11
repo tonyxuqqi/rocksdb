@@ -1521,7 +1521,7 @@ void DBImpl::MarkLogsNotSynced(uint64_t up_to) {
   }
   log_sync_cv_.SignalAll();
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                "MarkLogsNotSynced from %" PRIu64 " to %d\n", min_wal, up_to); 
+                "MarkLogsNotSynced from %" PRIu64 " to %" PRIu64 "\n", min_wal, up_to); 
 }
 
 SequenceNumber DBImpl::GetLatestSequenceNumber() const {
