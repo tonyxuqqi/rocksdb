@@ -1488,7 +1488,7 @@ void DBImpl::MarkLogsSynced(uint64_t up_to, bool synced_dir,
     auto& wal = *it;
     assert(wal.IsSyncing());
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                     "Synced log %" PRIu64 " from logs_\n", wal.number);
+                   "Synced log %" PRIu64 " from logs_\n", wal.number);
     if (logs_.size() > 1) {
       if (immutable_db_options_.track_and_verify_wals_in_manifest &&
           wal.GetPreSyncSize() > 0) {
@@ -1521,7 +1521,8 @@ void DBImpl::MarkLogsNotSynced(uint64_t up_to) {
   }
   log_sync_cv_.SignalAll();
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                "MarkLogsNotSynced from %" PRIu64 " to %" PRIu64 "\n", min_wal, up_to); 
+                 "MarkLogsNotSynced from %" PRIu64 " to %" PRIu64 "\n", min_wal,
+                 up_to);
 }
 
 SequenceNumber DBImpl::GetLatestSequenceNumber() const {

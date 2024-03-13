@@ -1556,7 +1556,7 @@ IOStatus DBImpl::WriteToWAL(const WriteThread::WriteGroup& write_group,
                    "Not writing to latest WAL: [%" PRIu64 ", %" PRIu64 "]",
                    log_writer->get_log_number(), logs_.back().number);
   }
-   
+
   return io_s;
 }
 
