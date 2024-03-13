@@ -1536,7 +1536,7 @@ IOStatus DBImpl::WriteToWAL(const WriteThread::WriteGroup& write_group,
                    "Not writing to latest WAL: [%" PRIu64 ", %" PRIu64 "]",
                    log_writer->get_log_number(), logs_.back().number);
   }
-   
+
   return io_s;
 }
 
@@ -2199,7 +2199,8 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   ROCKS_LOG_INFO(immutable_db_options_.info_log,
                  "[%s] New memtable created with log file: #%" PRIu64
                  ". Immutable memtables: %d. LatestSeqNum:#%" PRIu64 "\n",
-                 cfd->GetName().c_str(), new_log_number, num_imm_unflushed, versions_->LastSequence());
+                 cfd->GetName().c_str(), new_log_number, num_imm_unflushed,
+                 versions_->LastSequence());
   mutex_.Lock();
   if (recycle_log_number != 0) {
     // Since renaming the file is done outside DB mutex, we need to ensure
@@ -2227,10 +2228,10 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
                        new_log_number, versions_->LastSequence());
       } else {
         ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                      "[%s] Switch from #%" PRIu64 " to #%" PRIu64
-                      "  WAL file. LastSeqNum: #%" PRIu64 "\n",
-                      cfd->GetName().c_str(), cur_log_writer->get_log_number(),
-                      new_log_number, versions_->LastSequence()); 
+                       "[%s] Switch from #%" PRIu64 " to #%" PRIu64
+                       "  WAL file. LastSeqNum: #%" PRIu64 "\n",
+                       cfd->GetName().c_str(), cur_log_writer->get_log_number(),
+                       new_log_number, versions_->LastSequence());
       }
     }
     if (s.ok()) {
