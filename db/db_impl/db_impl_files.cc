@@ -319,9 +319,12 @@ void DBImpl::FindObsoleteFiles(JobContext* job_context, bool force,
         // logs_ could have changed while we were waiting.
         continue;
       }
+      auto writer = log.ReleaseWriter();
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                     "deleting log %" PRIu64 " from logs_\n", log.number);
-      logs_to_free_.push_back(log.ReleaseWriter());
+                     "deleting log %" PRIu64
+                     " from logs_, last seq number of WAL %" PRIu64 "\n",
+                     log.number, writer->GetLastSequence());
+      logs_to_free_.push_back(writer);
       logs_.pop_front();
     }
     // Current log cannot be obsolete.
@@ -496,7 +499,9 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
   for (const auto w : state.logs_to_free) {
     // TODO: maybe check the return value of Close.
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "Close log %" PRIu64 " from logs_\n", w->get_log_number());
+                   "Close log %" PRIu64
+                   " from logs_, last Seq number in WAL %" PRIu64 "\n",
+                   w->get_log_number(), w->GetLastSequence());
     auto s = w->Close();
     s.PermitUncheckedError();
   }

@@ -1494,9 +1494,12 @@ void DBImpl::MarkLogsSynced(uint64_t up_to, bool synced_dir,
           wal.GetPreSyncSize() > 0) {
         synced_wals->AddWal(wal.number, WalMetadata(wal.GetPreSyncSize()));
       }
+      auto writer = wal.ReleaseWriter();
       ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                     "deleting log %" PRIu64 " from logs_\n", wal.number);
-      logs_to_free_.push_back(wal.ReleaseWriter());
+                     "deleting log %" PRIu64
+                     " from logs_. Last Seq number of the WAL is %" PRIu64 "\n",
+                     wal.number, writer->GetLastSequence());
+      logs_to_free_.push_back(writer);
       it = logs_.erase(it);
     } else {
       wal.FinishSync();

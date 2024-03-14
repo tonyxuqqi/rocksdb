@@ -1432,14 +1432,23 @@ WriteBatch* DBImpl::MergeBatch(const WriteThread::WriteGroup& write_group,
 IOStatus DBImpl::WriteToWAL(const WriteBatch& merged_batch,
                             log::Writer* log_writer, uint64_t* log_used,
                             uint64_t* log_size,
-                            LogFileNumberSize& log_file_number_size) {
+                            LogFileNumberSize& log_file_number_size,
+                            int caller_id) {
   assert(log_size != nullptr);
   if (log_writer->file()->GetFileSize() == 0) {
     ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "Start writing to WAL: [%" PRIu64 "]",
+                   "Start writing to WAL: [%" PRIu64 " ]",
                    log_writer->get_log_number());
   }
+  if (log_writer->get_log_number() != logs_.back().number) {
+    ROCKS_LOG_INFO(
+        immutable_db_options_.info_log,
+        "Not writing to latest WAL: [%" PRIu64 ", %" PRIu64 "] CallerId: %d",
+        log_writer->get_log_number(), logs_.back().number, caller_id);
+  }
   Slice log_entry = WriteBatchInternal::Contents(&merged_batch);
+  SequenceNumber seq = WriteBatchInternal::Sequence(&merged_batch);
+  log_writer->SetLastSequence(seq);
   *log_size = log_entry.size();
   // When two_write_queues_ WriteToWAL has to be protected from concurretn calls
   // from the two queues anyway and log_write_mutex_ is already held. Otherwise
@@ -1492,7 +1501,7 @@ IOStatus DBImpl::WriteToWAL(const WriteThread::WriteGroup& write_group,
 
   uint64_t log_size;
   io_s = WriteToWAL(*merged_batch, log_writer, log_used, &log_size,
-                    log_file_number_size);
+                    log_file_number_size, 1);
   if (to_be_cached_state) {
     cached_recoverable_state_ = *to_be_cached_state;
     cached_recoverable_state_empty_ = false;
@@ -1555,12 +1564,6 @@ IOStatus DBImpl::WriteToWAL(const WriteThread::WriteGroup& write_group,
     RecordTick(stats_, WRITE_WITH_WAL, write_with_wal);
   }
 
-  if (log_writer->get_log_number() != logs_.back().number) {
-    ROCKS_LOG_INFO(immutable_db_options_.info_log,
-                   "Not writing to latest WAL: [%" PRIu64 ", %" PRIu64 "]",
-                   log_writer->get_log_number(), logs_.back().number);
-  }
-
   return io_s;
 }
 
@@ -1600,7 +1603,7 @@ IOStatus DBImpl::ConcurrentWriteToWAL(
 
   uint64_t log_size;
   io_s = WriteToWAL(*merged_batch, log_writer, log_used, &log_size,
-                    log_file_number_size);
+                    log_file_number_size, 2);
   if (to_be_cached_state) {
     cached_recoverable_state_ = *to_be_cached_state;
     cached_recoverable_state_empty_ = false;
