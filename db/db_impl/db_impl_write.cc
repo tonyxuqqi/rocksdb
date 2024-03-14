@@ -1434,7 +1434,11 @@ IOStatus DBImpl::WriteToWAL(const WriteBatch& merged_batch,
                             uint64_t* log_size,
                             LogFileNumberSize& log_file_number_size) {
   assert(log_size != nullptr);
-
+  if (log_writer->file()->GetFileSize() == 0) {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log,
+                   "Start writing to WAL: [%" PRIu64 "]",
+                   log_writer->get_log_number());
+  }
   Slice log_entry = WriteBatchInternal::Contents(&merged_batch);
   *log_size = log_entry.size();
   // When two_write_queues_ WriteToWAL has to be protected from concurretn calls
