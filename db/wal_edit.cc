@@ -17,9 +17,9 @@ void WalAddition::EncodeTo(std::string* dst) const {
   if (metadata_.HasSyncedSize()) {
     PutVarint32(dst, static_cast<uint32_t>(WalAdditionTag::kSyncedSize));
     PutVarint64(dst, metadata_.GetSyncedSizeInBytes());
-    PutVarint32(dst, static_cast<uint32_t>(WalAdditionTag::kLastSyncSeq));
-    PutVarint64(dst, metadata_.GetLastSequence());
   }
+  PutVarint32(dst, static_cast<uint32_t>(WalAdditionTag::kLastSyncSeq));
+  PutVarint64(dst, metadata_.GetLastSequence());
 
   PutVarint32(dst, static_cast<uint32_t>(WalAdditionTag::kTerminate));
 }
@@ -151,6 +151,7 @@ Status WalSet::AddWal(const WalAddition& wal) {
 
   // Update synced size for the given WAL.
   it->second.SetSyncedSizeInBytes(wal.GetMetadata().GetSyncedSizeInBytes());
+  it->second.SetLastSequence(wal.GetMetadata().GetLastSequence());
   return Status::OK();
 }
 
