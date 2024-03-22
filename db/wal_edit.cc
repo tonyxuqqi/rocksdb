@@ -51,7 +51,8 @@ Status WalAddition::DecodeFrom(Slice* src) {
         if (!GetVarint64(src, &lsn)) {
           return Status::Corruption(class_name, "Error decoding WAL file size");
         }
-        metadata_.SetLastSequence(lsn); 
+        metadata_.SetLastSequence(lsn);
+        break; 
       }
       // TODO: process future tags such as checksum.
       case WalAdditionTag::kTerminate:
