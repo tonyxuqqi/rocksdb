@@ -475,7 +475,7 @@ TEST_F(VersionEditTest, AddWalDebug) {
 
   VersionEdit edit;
   for (int i = 0; i < n; i++) {
-    edit.AddWal(kLogNumbers[i], WalMetadata(kSizeInBytes[i], 0));
+    edit.AddWal(kLogNumbers[i], WalMetadata(kSizeInBytes[i]));
   }
 
   const WalAdditions& wals = edit.GetWalAdditions();
@@ -573,7 +573,7 @@ TEST_F(VersionEditTest, IgnorableTags) {
   VersionEdit edit;
   // Add some ignorable entries.
   for (int i = 0; i < 2; i++) {
-    edit.AddWal(i + 1, WalMetadata(i + 2, 0));
+    edit.AddWal(i + 1, WalMetadata(i + 2));
   }
   edit.SetDBId("db_id");
   // Add unignorable entries.
