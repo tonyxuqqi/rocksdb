@@ -45,6 +45,8 @@ class WalMetadata {
 
   uint64_t GetLastSequence() const { return last_sequence_number_; }
 
+  void SetLastSequence(uint64_t lsn) { last_sequence_number_ = lsn; }
+
  private:
   friend bool operator==(const WalMetadata& lhs, const WalMetadata& rhs);
   friend bool operator!=(const WalMetadata& lhs, const WalMetadata& rhs);
@@ -72,6 +74,8 @@ enum class WalAdditionTag : uint32_t {
   kTerminate = 1,
   // Synced Size in bytes.
   kSyncedSize = 2,
+
+  kLastSyncSeq = 3,
   // Add tags in the future, such as checksum?
 };
 
