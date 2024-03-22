@@ -17,6 +17,8 @@ void WalAddition::EncodeTo(std::string* dst) const {
   if (metadata_.HasSyncedSize()) {
     PutVarint32(dst, static_cast<uint32_t>(WalAdditionTag::kSyncedSize));
     PutVarint64(dst, metadata_.GetSyncedSizeInBytes());
+    PutVarint32(dst, static_cast<uint32_t>(WalAdditionTag::kLastSyncSeq));
+    PutVarint64(dst, metadata_.GetLastSequence());
   }
 
   PutVarint32(dst, static_cast<uint32_t>(WalAdditionTag::kTerminate));
@@ -43,6 +45,13 @@ Status WalAddition::DecodeFrom(Slice* src) {
         }
         metadata_.SetSyncedSizeInBytes(size);
         break;
+      }
+      case WalAdditionTag::kLastSyncSeq: {
+        uint64_t lsn = 0;
+        if (!GetVarint64(src, &lsn)) {
+          return Status::Corruption(class_name, "Error decoding WAL file size");
+        }
+        metadata_.SetLastSequence(lsn); 
       }
       // TODO: process future tags such as checksum.
       case WalAdditionTag::kTerminate:
