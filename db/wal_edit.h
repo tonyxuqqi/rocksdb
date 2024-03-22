@@ -33,7 +33,7 @@ class WalMetadata {
   WalMetadata() = default;
 
   explicit WalMetadata(uint64_t synced_size_bytes,
-                       uint64_t last_sequence_number)
+                       uint64_t last_sequence_number = 0)
       : synced_size_bytes_(synced_size_bytes),
         last_sequence_number_(last_sequence_number) {}
 
